@@ -1,13 +1,23 @@
 import { randomUUID } from 'node:crypto';
-import { GENERATION_STEP_COUNT, type GenerationJobStatus } from '@cv-builder/shared';
+import {
+  type AnswerOutcome,
+  CvContentSchema,
+  GENERATION_STEP_COUNT,
+  type GenerationJobStatus,
+} from '@cv-builder/shared';
 import type { Repositories } from '../db/repositories';
 import type { CvDetailRecord, CvSummaryRecord } from '../modules/cvs/cvs.repository';
 import { JOB_FAILURES } from '../modules/generation/generation.failures';
 import type {
+  ClaimedJob,
   GenerationJobRecord,
   JobLease,
   StartJobResult,
 } from '../modules/generation/generation.repository';
+import type {
+  CvQuestionRecord,
+  QuestionWriteResult,
+} from '../modules/questions/questions.repository';
 import type { SourceDocumentRecord } from '../modules/source-documents/source-documents.repository';
 import type { UserRecord } from '../modules/users/users.repository';
 
@@ -47,6 +57,8 @@ export interface JobRow {
   id: string;
   cvId: string;
   userId: string;
+  kind: 'GENERATE' | 'APPLY_ANSWER';
+  questionId: string | null;
   status: GenerationJobStatus;
   input: unknown;
   result: unknown;
@@ -61,6 +73,23 @@ export interface JobRow {
   createdAt: Date;
 }
 
+export interface QuestionRow {
+  id: string;
+  cvId: string;
+  userId: string;
+  position: number;
+  section: string;
+  kind: string;
+  target: string;
+  itemId: string | null;
+  question: string;
+  why: string;
+  status: CvQuestionRecord['status'];
+  answer: string | null;
+  followUp: string | null;
+  createdAt: Date;
+}
+
 /**
  * The repositories, backed by arrays: behaves like the Prisma implementation (unique emails,
  * scoping by user, one active job per CV, leases) without a database. `db` exposes the rows to
@@ -72,6 +101,7 @@ export function createInMemoryRepositories() {
     cvs: [] as CvRow[],
     documents: [] as DocumentRow[],
     jobs: [] as JobRow[],
+    questions: [] as QuestionRow[],
   };
 
   // A clock that always moves forward keeps "latest first" ordering deterministic.
@@ -84,13 +114,21 @@ export function createInMemoryRepositories() {
     rows
       .filter((row) => row.cvId === cvId)
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
+  /** A CV's status comes from its generation jobs only. */
+  const generations = () => db.jobs.filter((job) => job.kind === 'GENERATE');
+  const isActive = (job: JobRow | undefined) =>
+    job?.status === 'PENDING' || job?.status === 'PROCESSING';
+  const latestJobOf = (questionId: string) =>
+    db.jobs
+      .filter((job) => job.questionId === questionId)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
 
   function toUser({ id, email, name }: UserRow): UserRecord {
     return { id, email, name };
   }
 
   function toSummary(cv: CvRow): CvSummaryRecord {
-    const job = latest(db.jobs, cv.id);
+    const job = latest(generations(), cv.id);
     return {
       id: cv.id,
       title: cv.title,
@@ -122,15 +160,47 @@ export function createInMemoryRepositories() {
     };
   }
 
+  function toQuestion(question: QuestionRow): CvQuestionRecord {
+    const job = latestJobOf(question.id);
+    const { id, section, kind, target, itemId, why, status, answer, followUp } = question;
+    return {
+      id,
+      section,
+      kind,
+      target,
+      itemId,
+      question: question.question,
+      why,
+      status,
+      answer,
+      followUp,
+      jobs: job
+        ? [
+            {
+              id: job.id,
+              status: job.status,
+              errorCode: job.errorCode,
+              result: job.result as never,
+            },
+          ]
+        : [],
+    };
+  }
+
   function toDetail(cv: CvRow): CvDetailRecord {
     const document = latest(db.documents, cv.id);
-    const job = latest(db.jobs, cv.id);
+    const job = latest(generations(), cv.id);
     return {
       ...toSummary(cv),
       sourceText: cv.sourceText,
       content: cv.content,
+      contentVersion: cv.contentVersion,
       sourceDocuments: document ? [toDocument(document)] : [],
       generationJobs: job ? [toJob(job)] : [],
+      questions: db.questions
+        .filter((question) => question.cvId === cv.id)
+        .sort((a, b) => a.position - b.position || a.createdAt.getTime() - b.createdAt.getTime())
+        .map(toQuestion),
     };
   }
 
@@ -200,6 +270,19 @@ export function createInMemoryRepositories() {
         }
         return toDetail(cv);
       },
+      async saveContent(userId, cvId, content, baseVersion, check) {
+        const cv = findCv(userId, cvId);
+        if (!cv) return { kind: 'not_found' };
+        if (cv.contentVersion === 0) return { kind: 'not_generated' };
+        const stored = CvContentSchema.parse(cv.content);
+        if (cv.contentVersion !== baseVersion) {
+          return { kind: 'conflict', content: stored, contentVersion: cv.contentVersion };
+        }
+        const issues = check(stored);
+        if (issues.length > 0) return { kind: 'invalid', issues };
+        Object.assign(cv, { content, contentVersion: baseVersion + 1, updatedAt: now() });
+        return { kind: 'saved', contentVersion: cv.contentVersion };
+      },
     },
 
     sourceDocuments: {
@@ -229,9 +312,8 @@ export function createInMemoryRepositories() {
       async startJob(userId, cvId, buildInput): Promise<StartJobResult> {
         const cv = findCv(userId, cvId);
         if (!cv) return { kind: 'not_found' };
-        const active = db.jobs.find(
-          (job) => job.cvId === cvId && (job.status === 'PENDING' || job.status === 'PROCESSING'),
-        );
+        if (cv.contentVersion > 0) return { kind: 'already_generated' };
+        const active = generations().find((job) => job.cvId === cvId && isActive(job));
         if (active) return { kind: 'busy', jobId: active.id };
 
         const document = latest(db.documents, cvId);
@@ -251,6 +333,8 @@ export function createInMemoryRepositories() {
           id: randomUUID(),
           cvId,
           userId,
+          kind: 'GENERATE',
+          questionId: null,
           status: 'PENDING',
           input,
           result: null,
@@ -289,10 +373,23 @@ export function createInMemoryRepositories() {
         }
         return { requeued, failed };
       },
-      async claimNext() {
+      async claimNext(): Promise<ClaimedJob | null> {
+        // Answers first, then the oldest; one answer at a time per CV.
+        const answering = (cvId: string) =>
+          db.jobs.some(
+            (job) =>
+              job.cvId === cvId && job.kind === 'APPLY_ANSWER' && job.status === 'PROCESSING',
+          );
         const job = db.jobs
-          .filter((row) => row.status === 'PENDING')
-          .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())[0];
+          .filter(
+            (row) =>
+              row.status === 'PENDING' && !(row.kind === 'APPLY_ANSWER' && answering(row.cvId)),
+          )
+          .sort(
+            (a, b) =>
+              Number(b.kind === 'APPLY_ANSWER') - Number(a.kind === 'APPLY_ANSWER') ||
+              a.createdAt.getTime() - b.createdAt.getTime(),
+          )[0];
         if (!job) return null;
         const startedAt = now();
         Object.assign(job, {
@@ -302,12 +399,20 @@ export function createInMemoryRepositories() {
           startedAt,
           heartbeatAt: startedAt,
         });
-        return {
+        const claimed = {
           jobId: job.id,
           attempts: job.attempts,
           cvId: job.cvId,
           userId: job.userId,
           input: job.input,
+        };
+        if (job.kind === 'GENERATE' || !job.questionId) return { ...claimed, kind: 'GENERATE' };
+        const cv = db.cvs.find((row) => row.id === job.cvId);
+        return {
+          ...claimed,
+          kind: 'APPLY_ANSWER',
+          questionId: job.questionId,
+          base: structuredClone(cv?.content ?? null),
         };
       },
       async heartbeat(lease, step) {
@@ -331,7 +436,66 @@ export function createInMemoryRepositories() {
         });
         const cv = findCv(job.userId, job.cvId);
         if (cv) Object.assign(cv, { content, contentVersion: cv.contentVersion + 1 });
+        issues.forEach((issue, position) =>
+          db.questions.push({
+            id: randomUUID(),
+            cvId: job.cvId,
+            userId: job.userId,
+            position,
+            section: issue.section,
+            kind: issue.kind,
+            target: issue.target,
+            itemId: issue.itemId ?? null,
+            question: issue.question,
+            why: issue.why,
+            status: 'OPEN',
+            answer: null,
+            followUp: null,
+            createdAt: now(),
+          }),
+        );
         return true;
+      },
+      async completeAnswer(lease, resolve) {
+        const job = held(lease);
+        if (!job?.questionId) return 'lost';
+        const cv = db.cvs.find((row) => row.id === job.cvId);
+        const current = CvContentSchema.safeParse(cv?.content);
+        if (!cv || !current.success) return 'invalid';
+
+        const resolution = resolve(current.data);
+        if (resolution.kind === 'invalid') return 'invalid';
+        const applied = resolution.kind === 'content' ? resolution.applied : [];
+        const outcome: AnswerOutcome =
+          resolution.kind === 'follow_up'
+            ? 'needs_more_info'
+            : applied.length > 0
+              ? 'updated'
+              : 'no_change';
+        const finishedAt = now();
+        Object.assign(job, {
+          status: 'COMPLETED',
+          result: { outcome, applied },
+          heartbeatAt: finishedAt,
+          finishedAt,
+        });
+        if (resolution.kind === 'content' && applied.length > 0) {
+          Object.assign(cv, {
+            content: resolution.content,
+            contentVersion: cv.contentVersion + 1,
+            updatedAt: finishedAt,
+          });
+        }
+        const question = db.questions.find((row) => row.id === job.questionId);
+        if (question && question.status !== 'DISMISSED') {
+          Object.assign(
+            question,
+            resolution.kind === 'follow_up'
+              ? { status: 'OPEN', followUp: resolution.followUp }
+              : { status: 'ANSWERED', followUp: null },
+          );
+        }
+        return 'completed';
       },
       async fail(lease, failure) {
         const job = held(lease);
@@ -355,6 +519,71 @@ export function createInMemoryRepositories() {
           heartbeatAt: null,
         });
         return true;
+      },
+    },
+
+    questions: {
+      async answer(userId, cvId, questionId, answer, buildInput): Promise<QuestionWriteResult> {
+        const cv = findCv(userId, cvId);
+        const question = db.questions.find(
+          (row) => row.id === questionId && row.cvId === cvId && row.userId === userId,
+        );
+        if (!cv || !question) return { kind: 'not_found' };
+        const job = latestJobOf(question.id);
+        if (isActive(job)) return { kind: 'busy' };
+
+        const answerable =
+          question.status === 'OPEN' ||
+          question.status === 'SKIPPED' ||
+          (question.status === 'ANSWERED' && job?.status === 'FAILED');
+        const content = CvContentSchema.safeParse(cv.content);
+        const entries =
+          question.section === 'experience'
+            ? (content.data?.experience ?? [])
+            : question.section === 'education'
+              ? (content.data?.education ?? [])
+              : [];
+        const hasEntry = !question.itemId || entries.some((entry) => entry.id === question.itemId);
+        if (!answerable || !content.success || !hasEntry) return { kind: 'closed' };
+
+        const input = buildInput({
+          targetRole: cv.targetRole,
+          question: toQuestion(question),
+          failedInput: job?.status === 'FAILED' ? job.input : null,
+        });
+        Object.assign(question, { status: 'ANSWERED', answer, followUp: null });
+        db.jobs.push({
+          id: randomUUID(),
+          cvId,
+          userId,
+          kind: 'APPLY_ANSWER',
+          questionId,
+          status: 'PENDING',
+          input,
+          result: null,
+          issues: null,
+          attempts: 0,
+          progressStep: 0,
+          errorCode: null,
+          errorMessage: null,
+          startedAt: null,
+          heartbeatAt: null,
+          finishedAt: null,
+          createdAt: now(),
+        });
+        return { kind: 'done', question: toQuestion(question) };
+      },
+      async setStatus(userId, cvId, questionId, status): Promise<QuestionWriteResult> {
+        const question = db.questions.find(
+          (row) => row.id === questionId && row.cvId === cvId && row.userId === userId,
+        );
+        if (!findCv(userId, cvId) || !question) return { kind: 'not_found' };
+        if (isActive(latestJobOf(question.id))) return { kind: 'busy' };
+        const allowed =
+          status === 'DISMISSED' || question.status === 'OPEN' || question.status === 'SKIPPED';
+        if (!allowed) return { kind: 'closed' };
+        question.status = status;
+        return { kind: 'done', question: toQuestion(question) };
       },
     },
   };

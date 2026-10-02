@@ -49,6 +49,8 @@ export const GenerationIssueSchema = z.strictObject({
   question: z.string().min(1).max(300),
   /** Why answering helps for the target role, in one sentence. */
   why: z.string().max(400),
+  /** The experience or education entry (its id) the issue is about, if it is about one. */
+  itemId: z.string().min(1).max(64).optional(),
 });
 
 export type GenerationIssue = z.infer<typeof GenerationIssueSchema>;

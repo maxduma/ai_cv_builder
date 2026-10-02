@@ -9,6 +9,8 @@ import { createGenerationRouter } from '../modules/generation/generation.routes'
 import { createGenerationService } from '../modules/generation/generation.service';
 import { createHealthRouter } from '../modules/health/health.routes';
 import { createHealthService } from '../modules/health/health.service';
+import { createQuestionsRouter } from '../modules/questions/questions.routes';
+import { createQuestionsService } from '../modules/questions/questions.service';
 import { createSourceDocumentsRouter } from '../modules/source-documents/source-documents.routes';
 import { createSourceDocumentsService } from '../modules/source-documents/source-documents.service';
 import { currentUser } from './middleware/current-user';
@@ -40,6 +42,7 @@ export function createApiRouter(deps: AppDeps): Router {
     logger: deps.logger,
   });
   const generationService = createGenerationService(repositories.generation);
+  const questionsService = createQuestionsService(repositories.questions);
 
   const router = Router();
 
@@ -54,6 +57,7 @@ export function createApiRouter(deps: AppDeps): Router {
   router.use('/cvs', createCvsRouter(cvsService));
   router.use('/cvs', createSourceDocumentsRouter(sourceDocumentsService));
   router.use(createGenerationRouter(generationService));
+  router.use(createQuestionsRouter(questionsService));
 
   return router;
 }

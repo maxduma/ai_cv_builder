@@ -1,8 +1,19 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-import { type CvContent, CvContentSchema, type GenerationIssue } from '@cv-builder/shared';
+import {
+  CV_LIMITS,
+  type CvContent,
+  CvContentSchema,
+  type GenerationIssue,
+  GenerationIssuesSchema,
+} from '@cv-builder/shared';
 import pino from 'pino';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { Repositories } from '../../db/repositories';
 import { createInMemoryRepositories } from '../../test/in-memory-repositories';
+import { createCvsService } from '../cvs/cvs.service';
+import { createQuestionsService } from '../questions/questions.service';
+import type { AnswerHooks, AnswerRequest, AnswerUpdater } from './answers/answer-input';
+import type { ContactChanges, RoleChanges } from './answers/answer-update.schema';
 import { type CvGenerator, type GeneratedCv, GenerationError } from './cv-generator';
 import { JOB_FAILURES } from './generation.failures';
 import { toGenerationInput } from './generation.service';
@@ -48,11 +59,18 @@ afterEach(async () => {
   await Promise.all(workers.splice(0).map((worker) => worker.stop()));
 });
 
+/** For tests that only generate: fails if an answer job reaches it. */
+const noAnswers: AnswerUpdater = {
+  async apply() {
+    throw new Error('No answer jobs expected');
+  },
+};
+
 /** The worker's tuning options, plus how many CVs with a pending job to create. */
 type SetupOptions = Omit<
   Parameters<typeof createGenerationWorker>[0],
-  'repository' | 'generator' | 'logger'
-> & { jobs?: number };
+  'repository' | 'generator' | 'logger' | 'answerUpdater'
+> & { jobs?: number; answerUpdater?: AnswerUpdater };
 
 /** CVs with a pending generation job each, plus a worker wired to the in-memory repository. */
 async function setup(generator: CvGenerator, { jobs = 1, ...options }: SetupOptions = {}) {
@@ -70,6 +88,7 @@ async function setup(generator: CvGenerator, { jobs = 1, ...options }: SetupOpti
   const worker = createGenerationWorker({
     repository: repositories.generation,
     generator,
+    answerUpdater: noAnswers,
     logger: silent,
     pollIntervalMs: 5,
     ...options,
@@ -331,7 +350,7 @@ describe('mock generator', () => {
     log: silent,
   });
 
-  it('walks the four steps and returns valid sample content without issues', async () => {
+  it('walks the four steps and returns valid sample content and questions', async () => {
     const steps: number[] = [];
     const output = await createMockCvGenerator({ stepMs: 0, failRate: 0 }).generate(
       input,
@@ -340,7 +359,11 @@ describe('mock generator', () => {
 
     expect(steps).toEqual([0, 1, 2, 3]);
     expect(CvContentSchema.parse(output.content).contact.headline).toBe('Data Engineer');
-    expect(output.issues).toEqual([]);
+    expect(GenerationIssuesSchema.parse(output.issues).map((issue) => issue.section)).toEqual([
+      'experience',
+      'education',
+      'contact',
+    ]);
   });
 
   it('can be told to fail, to try the failure screen', async () => {
@@ -349,6 +372,542 @@ describe('mock generator', () => {
     await expect(generator.generate(input, hooks())).rejects.toMatchObject({
       name: 'GenerationError',
       code: 'AI_TIMEOUT',
+    });
+  });
+});
+
+/** A generated CV with one role, for the answer tests. */
+const DRAFT: CvContent = CvContentSchema.parse({
+  version: 1,
+  contact: {
+    firstName: 'Alex',
+    lastName: 'Morgan',
+    headline: 'ML Engineer',
+    email: '',
+    phone: '',
+    location: 'Berlin',
+    links: [],
+  },
+  summary: 'Builds retrieval pipelines and evaluation tooling.',
+  experience: [
+    {
+      id: 'experience-1',
+      title: 'ML Engineer',
+      company: 'Northpay',
+      location: 'Berlin',
+      start: 'Mar 2021',
+      end: '',
+      current: true,
+      bullets: [{ id: 'bullet-1', text: 'Built the retrieval pipeline behind support search.' }],
+    },
+  ],
+  education: [],
+  skills: [
+    { id: 'skill-1', name: 'Python' },
+    { id: 'skill-2', name: 'PyTorch' },
+  ],
+});
+
+/** One question per section the tests answer; the role question is about `experience-1`. */
+const QUESTIONS: GenerationIssue[] = [
+  {
+    section: 'experience',
+    kind: 'incomplete',
+    target: 'Experience · Northpay',
+    itemId: 'experience-1',
+    question: 'How big was the team you led at Northpay?',
+    why: 'Team size shows the scope of your role.',
+  },
+  {
+    section: 'skills',
+    kind: 'missing',
+    target: 'Skills',
+    question: 'Which cloud platforms have you worked with?',
+    why: 'Most AI Engineer roles ask for one.',
+  },
+  {
+    section: 'contact',
+    kind: 'missing',
+    target: 'Contact details',
+    question: 'Which email should recruiters use?',
+    why: 'Your CV has no way to reach you yet.',
+  },
+];
+
+/** Changes to `experience-1` only; every field left out stays as it is. */
+function roleUpdate(changes: Partial<RoleChanges>, followUp = '') {
+  return {
+    followUp,
+    experience: [
+      {
+        id: 'experience-1',
+        title: '',
+        company: '',
+        location: '',
+        start: '',
+        end: '',
+        current: 'keep',
+        editBullets: [],
+        addBullets: [],
+        ...changes,
+      } satisfies RoleChanges,
+    ],
+  };
+}
+
+/** Changes to the contact details; every field left out stays as it is. */
+function contactUpdate(changes: Partial<ContactChanges>) {
+  return {
+    followUp: '',
+    contact: {
+      firstName: '',
+      lastName: '',
+      headline: '',
+      email: '',
+      phone: '',
+      location: '',
+      workSetup: '',
+      addLinks: [],
+      ...changes,
+    } satisfies ContactChanges,
+  };
+}
+
+/** A CV with a pending generation job; returns its id. */
+async function queueGeneration(repositories: Repositories) {
+  const cv = await repositories.cvs.create(USER, {
+    title: 'AI Engineer',
+    targetRole: 'AI Engineer',
+    sourceText: 'Built retrieval pipelines and evaluation tooling for three years.',
+  });
+  const started = await repositories.generation.startJob(USER, cv.id, toGenerationInput);
+  if (started.kind !== 'created') throw new Error('job not created');
+  return cv.id;
+}
+
+type ApplyAnswer = (request: AnswerRequest, hooks: AnswerHooks) => unknown;
+
+/**
+ * A CV generated as `DRAFT` with `QUESTIONS` open, and a worker whose answer updater records each
+ * request and returns what the test's `onApply` returns.
+ */
+async function setupAnswers(options: Omit<SetupOptions, 'jobs' | 'answerUpdater'> = {}) {
+  const { repositories, db } = createInMemoryRepositories();
+  const requests: AnswerRequest[] = [];
+  let apply: ApplyAnswer = () => {
+    throw new Error('No answer job expected');
+  };
+  const worker = createGenerationWorker({
+    repository: repositories.generation,
+    generator: scriptedGenerator({ content: DRAFT, issues: QUESTIONS }),
+    answerUpdater: {
+      async apply(request, hooks) {
+        requests.push(structuredClone(request));
+        return apply(request, hooks);
+      },
+    },
+    logger: silent,
+    pollIntervalMs: 5,
+    ...options,
+  });
+  workers.push(worker);
+
+  const cvId = await queueGeneration(repositories);
+  await worker.tick();
+
+  const questions = createQuestionsService(repositories.questions);
+  const cvs = createCvsService(repositories.cvs);
+  const cvRow = () => db.cvs.find((cv) => cv.id === cvId)!;
+  const question = (section: GenerationIssue['section']) =>
+    db.questions.find((row) => row.cvId === cvId && row.section === section)!;
+
+  return {
+    worker,
+    repositories,
+    db,
+    requests,
+    cvRow,
+    question,
+    onApply(next: ApplyAnswer) {
+      apply = next;
+    },
+    /** Answers the question about `section`, as the API does. */
+    answer: (section: GenerationIssue['section'], text: string) =>
+      questions.answer(USER, cvId, question(section).id, { answer: text }),
+    /** Saves an edit made in the editor to the CV as it is now. */
+    edit(change: (content: CvContent) => void) {
+      const content = CvContentSchema.parse(cvRow().content);
+      change(content);
+      return cvs.saveContent(USER, cvId, content, cvRow().contentVersion);
+    },
+    content: () => CvContentSchema.parse(cvRow().content),
+    answerJobs: () => db.jobs.filter((job) => job.kind === 'APPLY_ANSWER'),
+  };
+}
+
+describe('answer jobs', () => {
+  it('applies an answer around the edits the person saved while it ran', async () => {
+    const { worker, onApply, answer, edit, content, cvRow, question, answerJobs } =
+      await setupAnswers();
+    onApply(async () => {
+      // While the AI works, the person edits another section and another field of the same role.
+      await edit((cv) => {
+        cv.summary = 'Leads a small ML team.';
+        cv.experience[0]!.location = 'Lisbon';
+      });
+      return roleUpdate({
+        title: 'Lead ML Engineer',
+        addBullets: ['Led a team of five engineers.'],
+      });
+    });
+    await answer('experience', 'I was the lead of a team of five engineers.');
+
+    await worker.tick();
+
+    const added = content().experience[0]!.bullets[1]!;
+    expect(content()).toEqual({
+      ...DRAFT,
+      summary: 'Leads a small ML team.',
+      experience: [
+        {
+          ...DRAFT.experience[0]!,
+          title: 'Lead ML Engineer',
+          location: 'Lisbon',
+          bullets: [
+            ...DRAFT.experience[0]!.bullets,
+            { id: added.id, text: 'Led a team of five engineers.' },
+          ],
+        },
+      ],
+    });
+    // Generated (1), the person's edit (2), the answer (3).
+    expect(cvRow().contentVersion).toBe(3);
+    expect(question('experience')).toMatchObject({ status: 'ANSWERED', followUp: null });
+    expect(answerJobs()[0]).toMatchObject({
+      status: 'COMPLETED',
+      result: {
+        outcome: 'updated',
+        applied: ['experience.experience-1.title', `experience.experience-1.bullets.${added.id}`],
+      },
+    });
+  });
+
+  it('keeps the person’s value of a field they changed while the answer ran', async () => {
+    const { worker, onApply, answer, edit, content, cvRow, question, answerJobs } =
+      await setupAnswers();
+    onApply(async () => {
+      await edit((cv) => {
+        cv.experience[0]!.title = 'Staff ML Engineer';
+      });
+      return roleUpdate({ title: 'Lead ML Engineer' });
+    });
+    await answer('experience', 'I was the team lead.');
+
+    await worker.tick();
+
+    expect(content().experience[0]!.title).toBe('Staff ML Engineer');
+    // Only the person's edit was written.
+    expect(cvRow().contentVersion).toBe(2);
+    expect(question('experience')).toMatchObject({ status: 'ANSWERED' });
+    expect(answerJobs()[0]).toMatchObject({
+      status: 'COMPLETED',
+      result: { outcome: 'no_change', applied: [] },
+    });
+  });
+
+  it('changes nothing when the person deleted the role while the answer ran', async () => {
+    const { worker, onApply, answer, edit, content, cvRow, answerJobs } = await setupAnswers();
+    onApply(async () => {
+      await edit((cv) => {
+        cv.experience = [];
+      });
+      return roleUpdate({
+        title: 'Lead ML Engineer',
+        addBullets: ['Led a team of five engineers.'],
+      });
+    });
+    await answer('experience', 'I was the lead of a team of five engineers.');
+
+    await worker.tick();
+
+    expect(content()).toEqual({ ...DRAFT, experience: [] });
+    expect(cvRow().contentVersion).toBe(2);
+    expect(answerJobs()[0]).toMatchObject({
+      status: 'COMPLETED',
+      result: { outcome: 'no_change', applied: [] },
+    });
+  });
+
+  it('gives the updater the CV as it is when the job starts, with the question and the answer', async () => {
+    const { worker, onApply, answer, edit, requests, answerJobs } = await setupAnswers();
+    onApply(() => roleUpdate({}));
+    await answer('experience', 'I led a team of five engineers.');
+    // Saved after answering but before the job started: the update builds on it.
+    await edit((cv) => {
+      cv.summary = 'Leads a small ML team.';
+    });
+
+    await worker.tick();
+
+    const input = {
+      targetRole: 'AI Engineer',
+      question: {
+        section: 'experience',
+        kind: 'incomplete',
+        target: 'Experience · Northpay',
+        itemId: 'experience-1',
+        question: 'How big was the team you led at Northpay?',
+        why: 'Team size shows the scope of your role.',
+      },
+      answer: 'I led a team of five engineers.',
+      followUp: null,
+      previousAnswer: null,
+    };
+    // The job keeps the answer, never a copy of the CV: that is read when the job starts.
+    expect(answerJobs()[0]!.input).toEqual(input);
+    expect(requests).toEqual([{ ...input, cv: { ...DRAFT, summary: 'Leads a small ML team.' } }]);
+  });
+
+  it('applies two answers to one CV one after the other, the second on top of the first', async () => {
+    const { worker, repositories, onApply, answer, content, cvRow, requests, answerJobs } =
+      await setupAnswers();
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => (release = resolve));
+    onApply(async (request) => {
+      if (request.question.section === 'skills') return { followUp: '', addSkills: ['AWS'] };
+      await released;
+      return roleUpdate({ addBullets: ['Led a team of five engineers.'] });
+    });
+    await answer('experience', 'I led a team of five engineers.');
+    await answer('skills', 'AWS');
+
+    const first = worker.tick();
+    await vi.waitFor(() => expect(requests).toHaveLength(1));
+    // While the first runs, the second answer can't be claimed.
+    expect(await repositories.generation.claimNext()).toBeNull();
+    expect(answerJobs().map((job) => job.status)).toEqual(['PROCESSING', 'PENDING']);
+
+    release();
+    await first;
+    const afterFirst = content();
+    expect(await worker.tick()).toBe(true);
+
+    expect(requests.map((request) => request.question.section)).toEqual(['experience', 'skills']);
+    expect(requests[1]!.cv).toEqual(afterFirst);
+    expect(content().experience[0]!.bullets.map((bullet) => bullet.text)).toEqual([
+      'Built the retrieval pipeline behind support search.',
+      'Led a team of five engineers.',
+    ]);
+    expect(content().skills.map((skill) => skill.name)).toEqual(['Python', 'PyTorch', 'AWS']);
+    expect(cvRow().contentVersion).toBe(3);
+    expect(answerJobs().map((job) => job.status)).toEqual(['COMPLETED', 'COMPLETED']);
+  });
+
+  it('claims answers before older pending generations', async () => {
+    const { worker, repositories, db, onApply, answer, answerJobs } = await setupAnswers();
+    onApply(() => ({ followUp: '', addSkills: ['AWS'] }));
+    // Another CV's generation was queued before the answer.
+    const otherCvId = await queueGeneration(repositories);
+    await answer('skills', 'AWS');
+    const generation = () => db.jobs.find((job) => job.cvId === otherCvId)!;
+
+    await worker.tick();
+
+    expect(answerJobs()[0]).toMatchObject({ status: 'COMPLETED' });
+    expect(generation()).toMatchObject({ status: 'PENDING' });
+
+    await worker.tick();
+
+    expect(generation()).toMatchObject({ status: 'COMPLETED' });
+  });
+
+  it('reopens the question with the AI’s follow-up and leaves the CV as it is', async () => {
+    const { worker, onApply, answer, cvRow, question, answerJobs } = await setupAnswers();
+    onApply(() => roleUpdate({}, 'How many engineers were on the team?'));
+    await answer('experience', 'A few people.');
+
+    await worker.tick();
+
+    expect(question('experience')).toMatchObject({
+      status: 'OPEN',
+      answer: 'A few people.',
+      followUp: 'How many engineers were on the team?',
+    });
+    expect(cvRow().content).toEqual(DRAFT);
+    expect(cvRow().contentVersion).toBe(1);
+    expect(answerJobs()[0]).toMatchObject({
+      status: 'COMPLETED',
+      result: { outcome: 'needs_more_info', applied: [] },
+    });
+  });
+
+  it('sends the follow-up and the earlier answer with the next answer, and asks only once', async () => {
+    const { worker, onApply, answer, content, question, requests, answerJobs } =
+      await setupAnswers();
+    onApply(() => roleUpdate({}, 'How many engineers were on the team?'));
+    await answer('experience', 'A few people.');
+    await worker.tick();
+
+    // The AI asks again, but a question gets one follow-up at most: what is clear is applied.
+    onApply(() =>
+      roleUpdate({ addBullets: ['Led a team of five engineers.'] }, 'Since when did you lead it?'),
+    );
+    await answer('experience', 'Five engineers.');
+    await worker.tick();
+
+    expect(requests[1]).toMatchObject({
+      answer: 'Five engineers.',
+      followUp: 'How many engineers were on the team?',
+      previousAnswer: 'A few people.',
+    });
+    expect(question('experience')).toMatchObject({
+      status: 'ANSWERED',
+      answer: 'Five engineers.',
+      followUp: null,
+    });
+    expect(content().experience[0]!.bullets.map((bullet) => bullet.text)).toEqual([
+      'Built the retrieval pipeline behind support search.',
+      'Led a team of five engineers.',
+    ]);
+    expect(answerJobs()[1]).toMatchObject({ status: 'COMPLETED', result: { outcome: 'updated' } });
+  });
+
+  it('asks for the email itself when the AI’s email isn’t in the answer', async () => {
+    const { worker, onApply, answer, cvRow, question, answerJobs } = await setupAnswers();
+    onApply(() => contactUpdate({ email: 'alex.morgan@example.com' }));
+    await answer('contact', 'Use my usual work email.');
+
+    await worker.tick();
+
+    expect(question('contact')).toMatchObject({
+      status: 'OPEN',
+      followUp: 'Type the full email address, like name@example.com.',
+    });
+    expect(cvRow().content).toEqual(DRAFT);
+    expect(answerJobs()[0]).toMatchObject({
+      status: 'COMPLETED',
+      result: { outcome: 'needs_more_info', applied: [] },
+    });
+  });
+
+  it('leaves out an addition that no longer fits once the person filled the list', async () => {
+    const { worker, onApply, answer, edit, content, cvRow, answerJobs } = await setupAnswers();
+    onApply(async () => {
+      // Meanwhile the person fills the skills up to their limit.
+      await edit((cv) => {
+        for (let index = cv.skills.length; index < CV_LIMITS.skills; index += 1) {
+          cv.skills.push({ id: `typed-${index}`, name: `Skill ${index}` });
+        }
+      });
+      return { followUp: '', addSkills: ['AWS'] };
+    });
+    await answer('skills', 'AWS');
+
+    await worker.tick();
+
+    expect(content().skills).toHaveLength(CV_LIMITS.skills);
+    expect(content().skills.map((skill) => skill.name)).not.toContain('AWS');
+    expect(cvRow().contentVersion).toBe(2);
+    expect(answerJobs()[0]).toMatchObject({
+      status: 'COMPLETED',
+      result: { outcome: 'no_change', applied: [] },
+    });
+  });
+
+  it('fails with INVALID_OUTPUT when the update isn’t shaped for the question’s section', async () => {
+    const { worker, onApply, answer, cvRow, question, answerJobs } = await setupAnswers();
+    // An answer about a role can't rewrite the summary.
+    onApply(() => ({ followUp: '', summary: 'A summary the question never asked about.' }));
+    await answer('experience', 'I led a team of five engineers.');
+
+    await worker.tick();
+
+    expect(answerJobs()[0]).toMatchObject({
+      status: 'FAILED',
+      errorCode: 'INVALID_OUTPUT',
+      errorMessage: JOB_FAILURES.invalidOutput.message,
+      result: null,
+    });
+    expect(question('experience')).toMatchObject({ status: 'ANSWERED' });
+    expect(cvRow().content).toEqual(DRAFT);
+    expect(cvRow().contentVersion).toBe(1);
+  });
+
+  it('fails with AI_INVALID_UPDATE, writing nothing, when the merged CV can’t be stored', async () => {
+    const { worker, onApply, answer, cvRow, question, answerJobs } = await setupAnswers();
+    // Fits the answer schema, but CV content can't hold U+0000.
+    onApply(() => roleUpdate({ title: 'Lead\u0000ML Engineer' }));
+    await answer('experience', 'I was the team lead.');
+
+    await worker.tick();
+
+    expect(answerJobs()[0]).toMatchObject({
+      status: 'FAILED',
+      errorCode: 'AI_INVALID_UPDATE',
+      errorMessage: JOB_FAILURES.aiInvalidUpdate.message,
+      result: null,
+    });
+    expect(question('experience')).toMatchObject({ status: 'ANSWERED' });
+    expect(cvRow().content).toEqual(DRAFT);
+    expect(cvRow().contentVersion).toBe(1);
+  });
+
+  it('records an updater failure with its code, and the answer can be tried again', async () => {
+    const { worker, onApply, answer, cvRow, question, answerJobs } = await setupAnswers();
+    onApply(() => {
+      throw new GenerationError(JOB_FAILURES.aiRateLimited);
+    });
+    await answer('experience', 'I led a team of five engineers.');
+
+    await worker.tick();
+
+    expect(answerJobs()[0]).toMatchObject({
+      status: 'FAILED',
+      errorCode: 'AI_RATE_LIMITED',
+      errorMessage: JOB_FAILURES.aiRateLimited.message,
+    });
+    expect(question('experience')).toMatchObject({ status: 'ANSWERED' });
+    expect(cvRow().content).toEqual(DRAFT);
+    await expect(answer('experience', 'I led a team of five engineers.')).resolves.toMatchObject({
+      status: 'ANSWERED',
+    });
+  });
+
+  it('fails a hung answer with AI_TIMEOUT at its deadline', async () => {
+    let seen!: AbortSignal;
+    const { worker, onApply, answer, cvRow, answerJobs } = await setupAnswers({
+      answerTimeoutMs: 50,
+    });
+    onApply((_request, { signal }) => {
+      seen = signal;
+      return hang();
+    });
+    await answer('experience', 'I led a team of five engineers.');
+
+    await worker.tick();
+
+    expect(seen.aborted).toBe(true);
+    expect(answerJobs()[0]).toMatchObject({
+      status: 'FAILED',
+      errorCode: 'AI_TIMEOUT',
+      errorMessage: JOB_FAILURES.aiTimeout.message,
+    });
+    expect(cvRow().content).toEqual(DRAFT);
+  });
+
+  it('never reopens a question dismissed while its answer ran', async () => {
+    const { worker, onApply, answer, question, answerJobs } = await setupAnswers();
+    onApply(() => roleUpdate({}, 'How many engineers were on the team?'));
+    await answer('experience', 'A few people.');
+    // The API can't dismiss it while the answer runs; the completion must not reopen it either.
+    question('experience').status = 'DISMISSED';
+
+    await worker.tick();
+
+    expect(question('experience')).toMatchObject({ status: 'DISMISSED', followUp: null });
+    expect(answerJobs()[0]).toMatchObject({
+      status: 'COMPLETED',
+      result: { outcome: 'needs_more_info', applied: [] },
     });
   });
 });

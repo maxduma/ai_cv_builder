@@ -1,6 +1,8 @@
 import {
   CreateCvRequestSchema,
   CvIdParamsSchema,
+  SaveCvContentRequestSchema,
+  type SaveCvContentResponse,
   UpdateCvRequestSchema,
   type CvDetail,
   type CvListResponse,
@@ -44,6 +46,15 @@ export function createCvsRouter(cvsService: CvsService): Router {
     const input = UpdateCvRequestSchema.parse(req.body ?? {});
     const cv = await cvsService.update(user.id, cvId, input);
     res.json(toCvDetail(cv) satisfies CvDetail);
+  });
+
+  // The editor's autosave: the whole document, over the version it was edited from.
+  router.put('/:cvId/content', async (req, res) => {
+    const user = requireUser(req);
+    const { cvId } = CvIdParamsSchema.parse(req.params);
+    const { content, baseVersion } = SaveCvContentRequestSchema.parse(req.body ?? {});
+    const contentVersion = await cvsService.saveContent(user.id, cvId, content, baseVersion);
+    res.json({ contentVersion } satisfies SaveCvContentResponse);
   });
 
   return router;

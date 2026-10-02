@@ -62,4 +62,12 @@ export const JOB_FAILURES = {
     code: 'AI_SCHEMA_MISMATCH',
     message: 'The AI returned a CV we couldn’t use. Try again.',
   },
+
+  // Answers (the web shows its own copy for a failed answer, and these codes as a reference)
+  /** The changes an answer led to break the CV's rules; nothing was written. */
+  aiInvalidUpdate: {
+    code: 'AI_INVALID_UPDATE',
+    message:
+      'The AI’s update didn’t pass our checks, so your CV wasn’t changed. Try rephrasing your answer.',
+  },
 } satisfies Record<string, JobFailure>;

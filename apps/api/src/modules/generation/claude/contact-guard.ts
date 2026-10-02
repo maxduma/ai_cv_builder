@@ -1,9 +1,12 @@
-import type { AiCvDraft } from './cv-draft.schema';
-
 /** The contact details the guard checks, as named in the CV. */
 export type GuardedContactField = 'email' | 'phone' | 'links';
 
-type Contact = AiCvDraft['contact'];
+/** The part of a contact block the guard looks at; other fields pass through unchanged. */
+interface Contact {
+  email: string;
+  phone: string;
+  links: { url: string }[];
+}
 
 /** Whitespace, line breaks included, plus the invisible characters PDF text carries inside words. */
 const INVISIBLE = /[\s\u00AD\u200B-\u200D\u2060]/g;
@@ -24,10 +27,10 @@ const digitsOf = (text: string) => text.replace(/\D/g, '');
  * line breaks are ignored, and so is case for emails and URLs; a URL may gain or lose its scheme,
  * `www.` and a trailing slash, an email a `mailto:`; phones compare by their digits.
  */
-export function guardContactDetails(
-  contact: Contact,
+export function guardContactDetails<T extends Contact>(
+  contact: T,
   sources: string,
-): { contact: Contact; cleared: GuardedContactField[] } {
+): { contact: T; cleared: GuardedContactField[] } {
   const lower = sources.toLowerCase();
   // A hyphen at a line end may be the layout's ("north-\npay.com") or the address's own
   // ("jean-\nluc@…"), so the sources are searched both with and without it.
@@ -58,7 +61,8 @@ export function guardContactDetails(
   };
 }
 
-function normaliseUrl(url: string): string {
+/** A URL reduced to what identifies it: lowercase, no spaces, scheme, `www.` or trailing slash. */
+export function normaliseUrl(url: string): string {
   return squeeze(url.toLowerCase())
     .replace(URL_SCHEME, '')
     .replace(/^www\./, '')

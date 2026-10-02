@@ -48,6 +48,9 @@ const ISSUE: GenerationIssue = {
   why: 'Scale shows the size of systems you can own as a senior engineer.',
 };
 
+/** An issue as Claude writes it: about no entry in particular. */
+const AI_ISSUE: AiCvDraft['issues'][number] = { ...ISSUE, item: 0 };
+
 const CONTACT: AiCvDraft['contact'] = {
   firstName: 'Jane',
   lastName: 'Doe',
@@ -55,6 +58,7 @@ const CONTACT: AiCvDraft['contact'] = {
   email: 'jane.doe@example.com',
   phone: '+351 912 345 678',
   location: 'Lisbon',
+  workSetup: '',
   links: [{ label: 'LinkedIn', url: 'https://www.linkedin.com/in/janedoe/' }],
 };
 
@@ -98,7 +102,7 @@ function draft(overrides: Partial<AiCvDraft> = {}): AiCvDraft {
     ],
     education: [SCHOOL],
     skills: ['Go', 'PostgreSQL'],
-    issues: [ISSUE],
+    issues: [AI_ISSUE],
     ...overrides,
   };
 }
@@ -175,6 +179,7 @@ describe('Claude CV generator', () => {
         email: 'jane.doe@example.com',
         phone: '+351 912 345 678',
         location: 'Lisbon',
+        workSetup: '',
         links: [{ id: 'link-1', label: 'LinkedIn', url: 'https://www.linkedin.com/in/janedoe/' }],
       },
       summary: 'Backend engineer who built a payments ledger in Go and PostgreSQL at Northpay.',
@@ -368,7 +373,7 @@ describe('Claude CV generator', () => {
           })),
           education: many(20, (index) => ({ ...SCHOOL, degree: `Degree ${index + 1}` })),
           skills: many(90, (index) => `Skill ${index + 1}`),
-          issues: many(14, (index) => ({ ...ISSUE, question: `Question ${index + 1}?` })),
+          issues: many(14, (index) => ({ ...AI_ISSUE, question: `Question ${index + 1}?` })),
         }),
       ),
     ]);
@@ -395,14 +400,17 @@ describe('Claude CV generator', () => {
 
   it('allows exactly what a stored CV and its issues allow', async () => {
     const full = (length: number) => 'x'.repeat(length);
+    // A usable email, so the generator keeps it: 254 characters.
+    const email = `${full(242)}@example.com`;
     const atLimits: AiCvDraft = {
       contact: {
         firstName: full(80),
         lastName: full(80),
         headline: full(160),
-        email: full(254),
+        email,
         phone: full(40),
         location: full(120),
+        workSetup: full(160),
         links: many(10, () => ({ label: full(40), url: full(300) })),
       },
       summary: full(2_000),
@@ -430,13 +438,14 @@ describe('Claude CV generator', () => {
         target: full(120),
         question: full(300),
         why: full(400),
+        item: 0,
       })),
     };
     // The contact guard keeps the contact details only if the sources have them.
     const input = {
       ...INPUT,
       sourceText: null,
-      sourceDocument: { ...INPUT.sourceDocument!, text: full(300) },
+      sourceDocument: { ...INPUT.sourceDocument!, text: `${full(300)} ${email}` },
     };
 
     const cv = await run([answer(atLimits)], { input }).result;
@@ -489,7 +498,12 @@ describe('Claude CV generator', () => {
     it('asks only while there is room for another issue', async () => {
       const issues = many(10, (index) => ({ ...ISSUE, question: `Question ${index + 1}?` }));
       const { result } = run([
-        answer(draft({ contact: { ...CONTACT, email: 'invented@example.org' }, issues })),
+        answer(
+          draft({
+            contact: { ...CONTACT, email: 'invented@example.org' },
+            issues: issues.map((issue) => ({ ...issue, item: 0 })),
+          }),
+        ),
       ]);
 
       const cv = await result;
@@ -497,6 +511,51 @@ describe('Claude CV generator', () => {
       expect(CvContentSchema.parse(cv.content).contact.email).toBe('');
       expect(cv.issues).toEqual(issues);
     });
+
+    it('asks for an email the sources give in a form no one can write to', async () => {
+      const spelledOut = 'jane dot doe at example dot com';
+      const { result } = run([answer(draft({ contact: { ...CONTACT, email: spelledOut } }))], {
+        input: { ...INPUT, sourceText: `Email: ${spelledOut}` },
+      });
+
+      const cv = await result;
+
+      expect(CvContentSchema.parse(cv.content).contact.email).toBe('');
+      expect(cv.issues).toEqual([
+        ISSUE,
+        expect.objectContaining({ section: 'contact', target: 'Contact details' }),
+      ]);
+    });
+  });
+
+  it('turns an issue’s entry position into that entry’s id, when there is one', async () => {
+    const { result } = run([
+      answer(
+        draft({
+          issues: [
+            { ...AI_ISSUE, section: 'experience', item: 2 },
+            { ...AI_ISSUE, section: 'education', item: 1 },
+            // Out of range, not a whole number, or in a section without entries.
+            { ...AI_ISSUE, section: 'experience', item: 3 },
+            { ...AI_ISSUE, section: 'experience', item: 1.5 },
+            { ...AI_ISSUE, section: 'skills', item: 1 },
+          ],
+        }),
+      ),
+    ]);
+
+    const cv = await result;
+
+    expect(GenerationIssuesSchema.parse(cv.issues).map((issue) => issue.itemId)).toEqual([
+      'experience-2',
+      'education-1',
+      undefined,
+      undefined,
+      undefined,
+    ]);
+    const content = CvContentSchema.parse(cv.content);
+    expect(content.experience[1]?.id).toBe('experience-2');
+    expect(content.education[0]?.id).toBe('education-1');
   });
 
   it('never logs the sources or the CV', async () => {

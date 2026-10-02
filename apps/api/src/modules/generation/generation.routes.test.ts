@@ -1,12 +1,15 @@
 import {
   type ApiErrorBody,
+  type CvContent,
   CvContentSchema,
   type CvDetail,
+  type CvListResponse,
   type GenerationIssue,
   type GenerationJobDto,
 } from '@cv-builder/shared';
 import pino from 'pino';
 import { describe, expect, it } from 'vitest';
+import type { Repositories } from '../../db/repositories';
 import {
   sendJson,
   startApp,
@@ -14,6 +17,7 @@ import {
   TEST_USER_HEADER,
   USER_B,
 } from '../../test/start-app';
+import { JOB_FAILURES } from './generation.failures';
 import { createGenerationWorker } from './generation.worker';
 
 const NOTES = 'Six years building payment APIs in Go; led a team of four engineers.';
@@ -44,6 +48,53 @@ const ISSUES: GenerationIssue[] = [
     why: 'Without one, recruiters have no way to reach you.',
   },
 ];
+
+/** `CONTENT` with a role, and questions about it, a contact detail and a whole section. */
+const WITH_ROLE = CvContentSchema.parse({
+  ...CONTENT,
+  experience: [
+    {
+      id: 'experience-1',
+      title: 'Backend Engineer',
+      company: 'Northpay',
+      location: 'Berlin',
+      start: '2019',
+      end: '',
+      current: true,
+      bullets: [{ id: 'bullet-1', text: 'Led the team behind the payments API.' }],
+    },
+  ],
+});
+
+const QUESTIONS: GenerationIssue[] = [
+  {
+    section: 'experience',
+    kind: 'incomplete',
+    target: 'Experience · Northpay',
+    itemId: 'experience-1',
+    question: 'How many people were on the team you led at Northpay?',
+    why: 'A team size shows the scope of the role.',
+  },
+  ...ISSUES,
+  {
+    section: 'education',
+    kind: 'missing',
+    target: 'Education',
+    question: 'Do you have a degree or certificate to add?',
+    why: 'Your draft has no Education section yet. Most recruiters look for one.',
+  },
+];
+
+/** Completes the queued generation with `content` and `issues`, as the worker would. */
+async function completeGeneration(
+  repositories: Repositories,
+  content: CvContent = CONTENT,
+  issues: GenerationIssue[] = ISSUES,
+) {
+  const job = await repositories.generation.claimNext();
+  if (job?.kind !== 'GENERATE') throw new Error('no generation to claim');
+  await repositories.generation.succeed(job, content, issues);
+}
 
 async function setup(body: unknown = { targetRole: 'Senior Backend Engineer', sourceText: NOTES }) {
   const app = await startApp();
@@ -125,6 +176,20 @@ describe('POST /api/cvs/:cvId/generations', () => {
     });
   });
 
+  it('won’t generate a CV again once it has content', async () => {
+    const { start, repositories, db } = await setup();
+    await start();
+    await completeGeneration(repositories);
+
+    // That would overwrite the person's edits.
+    const response = await start();
+    const body = (await response.json()) as ApiErrorBody;
+
+    expect(response.status).toBe(409);
+    expect(body.error.code).toBe('CV_ALREADY_GENERATED');
+    expect(db.jobs).toHaveLength(1);
+  });
+
   it("can't start a generation for another user's CV", async () => {
     const { start, db } = await setup();
 
@@ -160,6 +225,11 @@ describe('GET /api/generation-jobs/:jobId', () => {
           return { content: CONTENT, issues: ISSUES };
         },
       },
+      answerUpdater: {
+        async apply() {
+          throw new Error('No answer jobs expected');
+        },
+      },
       logger: pino({ level: 'silent' }),
     });
 
@@ -173,6 +243,72 @@ describe('GET /api/generation-jobs/:jobId', () => {
       errorCode: null,
       issues: ISSUES,
     });
+  });
+});
+
+describe('questions from a generation', () => {
+  it('turns the issues into open questions, in the order the AI asked them', async () => {
+    const { start, baseUrl, cv, repositories, db } = await setup();
+    await start();
+
+    await completeGeneration(repositories, WITH_ROLE, QUESTIONS);
+    const detail = (await (await fetch(`${baseUrl}/api/cvs/${cv.id}`)).json()) as CvDetail;
+
+    expect(detail.questions).toEqual(
+      QUESTIONS.map((issue) => ({
+        id: expect.any(String),
+        ...issue,
+        itemId: issue.itemId ?? null,
+        status: 'open',
+        answer: null,
+        followUp: null,
+        update: null,
+      })),
+    );
+    expect(db.questions.map(({ cvId, position }) => ({ cvId, position }))).toEqual(
+      [0, 1, 2].map((position) => ({ cvId: cv.id, position })),
+    );
+  });
+});
+
+describe('CV status with answers', () => {
+  it('stays ready while an answer is applied, and after that failed', async () => {
+    const { start, baseUrl, cv, repositories } = await setup();
+    const generation = (await (await start()).json()) as GenerationJobDto;
+    await completeGeneration(repositories);
+    const detail = (await (await fetch(`${baseUrl}/api/cvs/${cv.id}`)).json()) as CvDetail;
+    /** The CV's status in the list and in its detail, and the generation the detail reports. */
+    const status = async () => {
+      const list = (await (await fetch(`${baseUrl}/api/cvs`)).json()) as CvListResponse;
+      const read = (await (await fetch(`${baseUrl}/api/cvs/${cv.id}`)).json()) as CvDetail;
+      return {
+        list: list.items[0]?.status,
+        detail: read.status,
+        generation: read.latestGeneration,
+      };
+    };
+    const ready = {
+      list: 'ready',
+      detail: 'ready',
+      generation: expect.objectContaining({ id: generation.id, status: 'COMPLETED' }),
+    };
+
+    const answered = await sendJson(
+      `${baseUrl}/api/cvs/${cv.id}/questions/${detail.questions[0]?.id}/answers`,
+      'POST',
+      { answer: 'alex.morgan@example.com' },
+    );
+    expect(answered.status).toBe(202);
+    const pending = await status();
+    const job = await repositories.generation.claimNext();
+    if (job?.kind !== 'APPLY_ANSWER') throw new Error('no answer job to claim');
+    const processing = await status();
+    await repositories.generation.fail(job, JOB_FAILURES.aiTimeout);
+    const failed = await status();
+
+    expect(pending).toEqual(ready);
+    expect(processing).toEqual(ready);
+    expect(failed).toEqual(ready);
   });
 });
 

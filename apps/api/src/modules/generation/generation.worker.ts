@@ -1,6 +1,9 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import { CvContentSchema, type GenerationIssue, GenerationIssuesSchema } from '@cv-builder/shared';
 import type { Logger } from '../../lib/logger';
+import { applyAnswerChanges, resolveAnswer } from './answers/answer-changes';
+import { AnswerInputSchema, type AnswerUpdater } from './answers/answer-input';
+import { ANSWER_UPDATE_SCHEMAS } from './answers/answer-update.schema';
 import { type CvGenerator, GenerationError } from './cv-generator';
 import { JOB_FAILURES } from './generation.failures';
 import { GenerationInputSchema } from './generation.input';
@@ -13,12 +16,14 @@ import type {
 
 export type GenerationWorkerRepository = Pick<
   GenerationRepository,
-  'recoverStale' | 'claimNext' | 'heartbeat' | 'succeed' | 'fail' | 'release'
+  'recoverStale' | 'claimNext' | 'heartbeat' | 'succeed' | 'completeAnswer' | 'fail' | 'release'
 >;
 
 interface Options {
   repository: GenerationWorkerRepository;
   generator: CvGenerator;
+  /** Applies answers to questions (APPLY_ANSWER jobs). */
+  answerUpdater: AnswerUpdater;
   logger: Logger;
   /**
    * How many jobs run at the same time, each in its own loop. A CV takes Claude a minute or more,
@@ -26,10 +31,12 @@ interface Options {
    */
   concurrency?: number;
   /**
-   * Deadline for one job, the generator's own retries included. Past it the job fails with
+   * Deadline for one generation, the generator's own retries included. Past it the job fails with
    * `AI_TIMEOUT`, even if the generator ignores its abort signal.
    */
   jobTimeoutMs?: number;
+  /** The same for applying one answer. */
+  answerTimeoutMs?: number;
   /** Wait between queue checks while there is nothing to do. */
   pollIntervalMs?: number;
   heartbeatIntervalMs?: number;
@@ -65,16 +72,18 @@ function validIssues(issues: unknown, log: Logger): GenerationIssue[] {
 }
 
 /**
- * Runs pending generation jobs inside the API process, `concurrency` at a time. Nothing depends
- * on the browser: the job's state lives in PostgreSQL, and a job whose worker died is picked up
- * again.
+ * Runs pending AI jobs inside the API process, `concurrency` at a time: CV generations, and
+ * answers applied to questions. Nothing depends on the browser: the job's state lives in
+ * PostgreSQL, and a job whose worker died is picked up again.
  */
 export function createGenerationWorker({
   repository,
   generator,
+  answerUpdater,
   logger,
   concurrency = 3,
   jobTimeoutMs = 240_000,
+  answerTimeoutMs = 120_000,
   pollIntervalMs = 1_000,
   heartbeatIntervalMs = 5_000,
   staleAfterMs = 30_000,
@@ -94,7 +103,12 @@ export function createGenerationWorker({
 
   async function processJob(job: ClaimedJob) {
     const lease: JobLease = { jobId: job.jobId, attempts: job.attempts };
-    const log = logger.child({ jobId: job.jobId, cvId: job.cvId, attempt: job.attempts });
+    const log = logger.child({
+      jobId: job.jobId,
+      cvId: job.cvId,
+      kind: job.kind,
+      attempt: job.attempts,
+    });
 
     // Claimed just as the worker was stopping: hand it straight back.
     if (stopping) {
@@ -102,10 +116,10 @@ export function createGenerationWorker({
       return;
     }
 
-    // The generator is stopped by the worker (shutdown, a lost lease) or by the job's deadline;
-    // which of them fired decides what happens to the job (see the catch below).
+    // The work is stopped by the worker (shutdown, a lost lease) or by the job's deadline; which
+    // of them fired decides what happens to the job (see the catch below).
     const controller = new AbortController();
-    const deadline = AbortSignal.timeout(jobTimeoutMs);
+    const deadline = AbortSignal.timeout(job.kind === 'GENERATE' ? jobTimeoutMs : answerTimeoutMs);
     const signal = AbortSignal.any([controller.signal, deadline]);
     jobs.add(controller);
     const heartbeat = setInterval(() => {
@@ -118,37 +132,8 @@ export function createGenerationWorker({
     }, heartbeatIntervalMs);
 
     try {
-      // The input was validated when the job was created, but it comes back from the database.
-      const input = GenerationInputSchema.safeParse(job.input);
-      if (!input.success) {
-        await recordFailure(lease, JOB_FAILURES.invalidInput, log, input.error);
-        return;
-      }
-
-      const output = await abortable(
-        generator.generate(input.data, {
-          signal,
-          log,
-          onStep: async (step) => {
-            if (!(await repository.heartbeat(lease, step))) throw new LeaseLostError();
-          },
-        }),
-        signal,
-      );
-
-      // Generated content is never trusted: it must match the CV content schema.
-      const content = CvContentSchema.safeParse(output.content);
-      if (!content.success) {
-        await recordFailure(lease, JOB_FAILURES.invalidOutput, log, content.error);
-        return;
-      }
-      const issues = validIssues(output.issues, log);
-
-      if (await repository.succeed(lease, content.data, issues)) {
-        log.info({ issues: issues.length }, 'Generation completed');
-      } else {
-        log.warn('Lost the job before its result could be saved');
-      }
+      if (job.kind === 'GENERATE') await generate(job, lease, signal, log);
+      else await applyAnswer(job, lease, signal, log);
     } catch (error) {
       if (error instanceof LeaseLostError || controller.signal.reason instanceof LeaseLostError) {
         log.warn('Another run took over this job; dropping this one');
@@ -165,6 +150,81 @@ export function createGenerationWorker({
     } finally {
       clearInterval(heartbeat);
       jobs.delete(controller);
+    }
+  }
+
+  async function generate(job: ClaimedJob, lease: JobLease, signal: AbortSignal, log: Logger) {
+    // The input was validated when the job was created, but it comes back from the database.
+    const input = GenerationInputSchema.safeParse(job.input);
+    if (!input.success) {
+      await recordFailure(lease, JOB_FAILURES.invalidInput, log, input.error);
+      return;
+    }
+
+    const output = await abortable(
+      generator.generate(input.data, {
+        signal,
+        log,
+        onStep: async (step) => {
+          if (!(await repository.heartbeat(lease, step))) throw new LeaseLostError();
+        },
+      }),
+      signal,
+    );
+
+    // Generated content is never trusted: it must match the CV content schema.
+    const content = CvContentSchema.safeParse(output.content);
+    if (!content.success) {
+      await recordFailure(lease, JOB_FAILURES.invalidOutput, log, content.error);
+      return;
+    }
+    const issues = validIssues(output.issues, log);
+
+    if (await repository.succeed(lease, content.data, issues)) {
+      log.info({ issues: issues.length }, 'Generation completed');
+    } else {
+      log.warn('Lost the job before its result could be saved');
+    }
+  }
+
+  /**
+   * Applies an answer: Claude turns it into changes to one section of the CV as it was when the
+   * job started (`job.base`), and those changes are merged into the CV as it is when they land,
+   * so the person's edits made meanwhile win (see `resolveAnswer`).
+   */
+  async function applyAnswer(
+    job: Extract<ClaimedJob, { kind: 'APPLY_ANSWER' }>,
+    lease: JobLease,
+    signal: AbortSignal,
+    log: Logger,
+  ) {
+    const input = AnswerInputSchema.safeParse(job.input);
+    const base = CvContentSchema.safeParse(job.base);
+    if (!input.success || !base.success) {
+      await recordFailure(lease, JOB_FAILURES.invalidInput, log, input.error ?? base.error);
+      return;
+    }
+    const request = { ...input.data, cv: base.data };
+
+    const output = await abortable(answerUpdater.apply(request, { signal, log }), signal);
+
+    // Never trusted either: it must match the schema of the question's section.
+    const update = ANSWER_UPDATE_SCHEMAS[request.question.section].safeParse(output);
+    if (!update.success) {
+      await recordFailure(lease, JOB_FAILURES.invalidOutput, log, update.error);
+      return;
+    }
+    const changes = applyAnswerChanges(request, update.data);
+
+    const result = await repository.completeAnswer(lease, (current) =>
+      resolveAnswer(base.data, changes, current),
+    );
+    if (result === 'invalid') {
+      await recordFailure(lease, JOB_FAILURES.aiInvalidUpdate, log, undefined);
+    } else if (result === 'lost') {
+      log.warn('Lost the job before its result could be saved');
+    } else {
+      log.info({ followUp: changes.kind === 'follow_up' }, 'Answer applied');
     }
   }
 

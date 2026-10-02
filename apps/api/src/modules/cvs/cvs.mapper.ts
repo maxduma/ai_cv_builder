@@ -7,6 +7,7 @@ import {
   type GenerationJobStatus,
 } from '@cv-builder/shared';
 import { toGenerationJobDto } from '../generation/generation.mapper';
+import { toCvQuestionDto } from '../questions/questions.mapper';
 import { toSourceDocumentDto } from '../source-documents/source-documents.mapper';
 import type { CvDetailRecord, CvSummaryRecord } from './cvs.repository';
 
@@ -42,6 +43,8 @@ export function toCvDetail(cv: CvDetailRecord): CvDetail {
     sourceDocument: sourceDocument ? toSourceDocumentDto(sourceDocument) : null,
     latestGeneration: latestGeneration ? toGenerationJobDto(latestGeneration) : null,
     content: toContent(cv.content),
+    contentVersion: cv.contentVersion,
+    questions: cv.questions.map(toCvQuestionDto),
   };
 }
 

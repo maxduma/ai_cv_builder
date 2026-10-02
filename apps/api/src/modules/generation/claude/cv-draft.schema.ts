@@ -1,6 +1,6 @@
-import { GENERATION_ISSUES_MAX, GenerationIssueSchema } from '@cv-builder/shared';
+import { CV_LIMITS, GENERATION_ISSUES_MAX, GenerationIssueSchema } from '@cv-builder/shared';
 import { z } from 'zod';
-import type { JsonOutputFormat } from '../../../integrations/ai/claude-client';
+import { toJsonOutputFormat } from '../../../integrations/ai/output-schema';
 
 /**
  * How many entries each list in Claude's answer may have: the limits of a stored CV
@@ -8,11 +8,11 @@ import type { JsonOutputFormat } from '../../../integrations/ai/claude-client';
  * relevant first, so the generator cuts a list that runs over instead of rejecting the answer.
  */
 export const AI_CV_DRAFT_LIMITS = {
-  links: 10,
-  experience: 30,
-  bullets: 15,
-  education: 15,
-  skills: 80,
+  links: CV_LIMITS.links,
+  experience: CV_LIMITS.experience,
+  bullets: CV_LIMITS.bullets,
+  education: CV_LIMITS.education,
+  skills: CV_LIMITS.skills,
   issues: GENERATION_ISSUES_MAX,
 } as const;
 
@@ -33,7 +33,8 @@ const issue = GenerationIssueSchema.shape;
  * - Contact details are plain strings on purpose: a grammar-enforced `email` or `uri` format can't
  *   be empty, so it would force the model to invent one when the sources have none.
  * - Lengths and counts are those of `CvContentSchema`; the issues use the shared
- *   `GenerationIssueSchema` fields. The descriptions are per-field guidance for the model.
+ *   `GenerationIssueSchema` fields, plus `item`, which the generator turns into the entry's id.
+ *   The descriptions are per-field guidance for the model.
  */
 export const AiCvDraftSchema = z.strictObject({
   contact: z
@@ -49,6 +50,10 @@ export const AiCvDraftSchema = z.strictObject({
       location: text(
         120,
         'Where the person is based, as the sources state it; empty if not given.',
+      ),
+      workSetup: text(
+        160,
+        'The ways of working the person says they are open to, e.g. "Open to remote roles"; empty if the sources don’t say.',
       ),
       links: list(
         z.strictObject({
@@ -126,6 +131,11 @@ export const AiCvDraftSchema = z.strictObject({
       why: issue.why.describe(
         'One sentence on why answering helps for the target role. In English.',
       ),
+      item: z
+        .number()
+        .describe(
+          'For an experience or education issue about one entry: its position in that list of this answer, counting from 1. Otherwise 0.',
+        ),
     }),
     AI_CV_DRAFT_LIMITS.issues,
     'The gaps that matter most for the target role, most important first; empty if nothing important is missing.',
@@ -134,65 +144,5 @@ export const AiCvDraftSchema = z.strictObject({
 
 export type AiCvDraft = z.infer<typeof AiCvDraftSchema>;
 
-type JsonSchema = Record<string, unknown>;
-
-/** Keywords structured outputs enforce; kept as they are. */
-const ENFORCED_KEYWORDS = new Set([
-  'type',
-  'description',
-  'properties',
-  'required',
-  'additionalProperties',
-  'items',
-  'enum',
-]);
-/** Limits the API doesn't support: they move into the description, where the model reads them. */
-const DESCRIBED_KEYWORDS = new Set(['minLength', 'maxLength', 'minItems', 'maxItems']);
-
-/**
- * Turns zod's JSON Schema into one structured outputs accept, the way the SDK's
- * `betaZodOutputFormat` does, except that `enum` stays a constraint: the SDK (0.131) moves it into
- * the description too, so the grammar wouldn't hold `section` and `kind` to their values. Any
- * other keyword throws here, at module load, instead of silently going unenforced.
- */
-function toOutputSchema(node: JsonSchema): JsonSchema {
-  const result: JsonSchema = {};
-  const limits: string[] = [];
-
-  for (const [keyword, value] of Object.entries(node)) {
-    if (keyword === 'properties') {
-      const properties = Object.entries(value as Record<string, JsonSchema>);
-      result.properties = Object.fromEntries(
-        properties.map(([name, property]) => [name, toOutputSchema(property)]),
-      );
-    } else if (keyword === 'items') {
-      result.items = toOutputSchema(value as JsonSchema);
-    } else if (ENFORCED_KEYWORDS.has(keyword)) {
-      result[keyword] = value;
-    } else if (DESCRIBED_KEYWORDS.has(keyword)) {
-      limits.push(`${keyword}: ${JSON.stringify(value)}`);
-    } else if (keyword !== '$schema') {
-      throw new Error(`The CV draft schema uses "${keyword}", which structured outputs don't take`);
-    }
-  }
-
-  if (limits.length > 0) {
-    const description = typeof result.description === 'string' ? `${result.description}\n\n` : '';
-    result.description = `${description}{${limits.join(', ')}}`;
-  }
-  return result;
-}
-
-/**
- * The schema as structured outputs take it, built once so it is byte-stable (the API caches a
- * compiled schema for 24 hours). It is `type` and `schema` only, with no `parse`: given one, the
- * SDK would parse every text block on its own, which breaks on refusals, truncated answers and
- * answers continued by a fallback model. The generator parses the joined text itself.
- *
- * `reused: 'inline'` keeps every field in place; by default zod moves children of `.describe()`d
- * or `.max()`ed schemas into `$defs`, and the model would see references instead of fields.
- */
-export const AI_CV_DRAFT_FORMAT: JsonOutputFormat = {
-  type: 'json_schema',
-  schema: toOutputSchema(z.toJSONSchema(AiCvDraftSchema, { reused: 'inline' })),
-};
+/** The schema as structured outputs take it; see `toJsonOutputFormat`. */
+export const AI_CV_DRAFT_FORMAT = toJsonOutputFormat(AiCvDraftSchema);

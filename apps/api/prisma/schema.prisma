@@ -43,6 +43,7 @@ model Cv {
   user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   generationJobs  GenerationJob[]
   sourceDocuments SourceDocument[]
+  questions       CvQuestion[]
 
   // Jobs and documents reference (id, user_id) together, so the database guarantees
   // they always belong to the same user as their CV.
@@ -60,16 +61,29 @@ enum GenerationJobStatus {
   @@map("generation_job_status")
 }
 
-// A persistent, asynchronous CV generation run. Postgres acts as the queue: a worker claims
-// PENDING jobs with `FOR UPDATE SKIP LOCKED` and keeps `heartbeat_at` fresh while processing.
+/// What a job does: write the CV from its sources, or apply one answer to a question to it.
+enum GenerationJobKind {
+  GENERATE
+  APPLY_ANSWER
+
+  @@map("generation_job_kind")
+}
+
+// A persistent, asynchronous AI job on a CV: its generation, or the update from an answer.
+// Postgres acts as the queue: a worker claims PENDING jobs with `FOR UPDATE SKIP LOCKED` and keeps
+// `heartbeat_at` fresh while processing.
 model GenerationJob {
   id           String              @id @default(uuid(7)) @db.Uuid
   cvId         String              @map("cv_id") @db.Uuid
   userId       String              @map("user_id") @db.Uuid
+  kind         GenerationJobKind   @default(GENERATE)
+  /// The question whose answer an APPLY_ANSWER job applies.
+  questionId   String?             @map("question_id") @db.Uuid
   status       GenerationJobStatus @default(PENDING)
   /// Validated snapshot of the parameters the job was created with.
   input        Json
-  /// Validated AI output; copied to `cvs.content` when the job completes.
+  /// GENERATE: the validated AI output, copied to `cvs.content` on completion.
+  /// APPLY_ANSWER: what the answer did ({ outcome, applied }).
   result       Json?
   /// Validated list of what the AI found missing or unclear in the sources (see shared GenerationIssue).
   issues       Json?
@@ -84,12 +98,57 @@ model GenerationJob {
   createdAt    DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  cv Cv @relation(fields: [cvId, userId], references: [id, userId], onDelete: Cascade)
+  cv       Cv          @relation(fields: [cvId, userId], references: [id, userId], onDelete: Cascade)
+  // Through (question_id, cv_id), so a job can only apply an answer to a question of its own CV.
+  question CvQuestion? @relation(fields: [questionId, cvId], references: [id, cvId], onDelete: Cascade)
 
   @@index([status, createdAt])
   @@index([cvId, createdAt])
   @@index([userId, createdAt])
+  @@index([questionId, createdAt])
   @@map("generation_jobs")
+}
+
+enum CvQuestionStatus {
+  OPEN
+  SKIPPED
+  ANSWERED
+  DISMISSED
+
+  @@map("cv_question_status")
+}
+
+// A question the AI asked about a CV (a shared GenerationIssue), kept until the person answers or
+// dismisses it. Answering queues an APPLY_ANSWER job.
+model CvQuestion {
+  id        String           @id @default(uuid(7)) @db.Uuid
+  cvId      String           @map("cv_id") @db.Uuid
+  userId    String           @map("user_id") @db.Uuid
+  /// Order in which the AI asked (most important first).
+  position  Int
+  /// A shared GENERATION_ISSUE_SECTIONS value.
+  section   String
+  /// A shared GENERATION_ISSUE_KINDS value.
+  kind      String
+  target    String
+  /// The experience or education entry the question is about, if any.
+  itemId    String?          @map("item_id")
+  question  String
+  why       String
+  status    CvQuestionStatus @default(OPEN)
+  /// The latest answer.
+  answer    String?
+  /// What the AI still needs after that answer, while the question is OPEN again.
+  followUp  String?          @map("follow_up")
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  cv   Cv              @relation(fields: [cvId, userId], references: [id, userId], onDelete: Cascade)
+  jobs GenerationJob[]
+
+  @@unique([id, cvId])
+  @@index([cvId, position])
+  @@map("cv_questions")
 }
 
 // A file the user uploaded as source material for a CV (e.g. an existing CV or a LinkedIn export).

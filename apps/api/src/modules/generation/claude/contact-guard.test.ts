@@ -12,6 +12,7 @@ function contact(overrides: Partial<Contact> = {}): Contact {
     email: '',
     phone: '',
     location: 'Lisbon',
+    workSetup: '',
     links: [],
     ...overrides,
   };
