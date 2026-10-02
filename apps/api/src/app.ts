@@ -3,19 +3,23 @@ import express, { type Express } from 'express';
 import helmet from 'helmet';
 import { pinoHttp } from 'pino-http';
 import type { Config } from './config/env';
-import type { PrismaClient } from './db/prisma';
+import type { Repositories } from './db/repositories';
 import type { CurrentUserResolver } from './http/middleware/current-user';
 import { errorHandler } from './http/middleware/error-handler';
 import { notFound } from './http/middleware/not-found';
 import { createApiRouter } from './http/router';
+import type { PdfTextExtractor } from './integrations/extraction/pdf-text-extractor';
+import type { FileStorage } from './integrations/storage/file-storage';
 import type { Logger } from './lib/logger';
 
 export interface AppDeps {
   config: Config;
   logger: Logger;
-  prisma: PrismaClient;
   checkDatabase: () => Promise<void>;
   resolveCurrentUser: CurrentUserResolver;
+  repositories: Repositories;
+  fileStorage: FileStorage;
+  pdfTextExtractor: PdfTextExtractor;
 }
 
 /** A client-supplied request id is reused only if it is short and safe to log. */
@@ -36,8 +40,12 @@ export function createApp(deps: AppDeps): Express {
         res.setHeader('X-Request-Id', id);
         return id;
       },
-      // The web app polls the health endpoint; don't flood the logs with it.
-      autoLogging: { ignore: (req) => req.url === '/api/health' },
+      // Health checks and generation progress are polled; don't flood the logs with them.
+      autoLogging: {
+        ignore: (req) =>
+          req.url === '/api/health' ||
+          (req.method === 'GET' && req.url?.startsWith('/api/generation-jobs/') === true),
+      },
     }),
   );
   app.use(express.json({ limit: '1mb' }));

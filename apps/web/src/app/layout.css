@@ -1,0 +1,213 @@
+/* ---------- app header ---------- */
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  padding-top: env(safe-area-inset-top, 0px);
+  background: rgba(255, 255, 255, 0.72);
+  -webkit-backdrop-filter: saturate(180%) blur(16px);
+  backdrop-filter: saturate(180%) blur(16px);
+  border-bottom: 1px solid var(--line);
+}
+
+.app-bar {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  max-width: 1184px;
+  height: 60px;
+  margin: 0 auto;
+  padding: 0 32px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: 8px;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.brand:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+
+.brand-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  background: linear-gradient(
+    150deg,
+    color-mix(in oklab, var(--accent) 72%, #fff),
+    var(--accent) 58%,
+    color-mix(in oklab, var(--accent) 78%, #000)
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    0 1px 2px rgba(17, 17, 26, 0.2),
+    0 6px 14px -6px color-mix(in oklab, var(--accent) 70%, transparent);
+  color: var(--accent);
+}
+
+.brand-mark svg {
+  display: block;
+}
+
+.brand-name {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  white-space: nowrap;
+}
+
+.app-nav {
+  display: flex;
+  align-items: center;
+}
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 8px;
+  color: var(--text-3);
+  font-size: 14px;
+  font-weight: 550;
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    background-color var(--dur-fast) ease,
+    color var(--dur-fast) ease;
+}
+
+.nav-link:hover,
+.nav-link[aria-current='page'] {
+  background: rgba(17, 17, 26, 0.055);
+  color: var(--ink);
+}
+
+.nav-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---------- page frame ---------- */
+.page-main {
+  max-width: 1184px;
+  margin: 0 auto;
+  padding: 56px 32px 96px;
+}
+
+.page-main.is-form,
+.page-main.is-gen {
+  padding-top: 40px;
+}
+
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.page-title {
+  margin: 0;
+  color: var(--ink);
+  font-size: 36px;
+  line-height: 1.1;
+  font-weight: 600;
+  letter-spacing: -0.035em;
+}
+
+.page-title:focus {
+  outline: none;
+}
+
+.page-sub {
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  margin: 0 0 18px -8px;
+  padding: 0 10px 0 8px;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 13.5px;
+  font-weight: 550;
+  text-decoration: none;
+  transition:
+    background-color var(--dur-fast) ease,
+    color var(--dur-fast) ease;
+}
+
+.back-link:hover {
+  background: rgba(17, 17, 26, 0.05);
+  color: var(--ink);
+}
+
+.back-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.back-link svg {
+  display: block;
+  flex-shrink: 0;
+  transition: transform var(--dur-base) var(--ease-out);
+}
+
+.back-link:hover svg {
+  transform: translateX(-2px);
+}
+
+@media (max-width: 1023px) {
+  .page-main {
+    padding: 48px 32px 80px;
+  }
+
+  .page-main.is-form,
+  .page-main.is-gen {
+    padding-top: 40px;
+  }
+}
+
+@media (max-width: 599px) {
+  .app-bar {
+    height: 56px;
+    padding: 0 16px;
+    gap: 16px;
+  }
+
+  .page-main {
+    padding: 28px 16px 48px;
+  }
+
+  .page-main.is-form,
+  .page-main.is-gen {
+    padding-top: 24px;
+  }
+
+  .page-head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 20px;
+  }
+
+  .page-title {
+    font-size: 28px;
+  }
+}

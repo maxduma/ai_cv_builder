@@ -1,0 +1,373 @@
+/* ---------- page head ---------- */
+.dash-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.dash-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.count-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 7px;
+  background: rgba(17, 17, 26, 0.06);
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- grid + card ---------- */
+.cv-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  margin: 36px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cv-item {
+  display: flex;
+  min-width: 0;
+}
+
+/* Cards rise in sequence when the list first appears (motion spec: 600ms, 80ms apart). */
+.cv-item.cv-enter {
+  animation: cvb-rise 620ms var(--ease-out) both;
+  animation-delay: calc(80ms + var(--i, 0) * 80ms);
+}
+
+.cv-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+  box-shadow: var(--sh-sm);
+  transition:
+    transform var(--dur-slow) var(--ease-out),
+    box-shadow var(--dur-slow) var(--ease-out),
+    border-color var(--dur-base) ease;
+}
+
+.cv-card::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  z-index: 3;
+  padding: 1px;
+  border-radius: 16px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--accent) 60%, transparent),
+    transparent 58%
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 260ms ease;
+  pointer-events: none;
+}
+
+.cv-card:is(:hover, :has(.cv-open:focus-visible)) {
+  transform: translateY(-3px);
+  border-color: rgba(17, 17, 26, 0.1);
+  box-shadow: var(--sh-md);
+}
+
+.cv-card:is(:hover, :has(.cv-open:focus-visible))::before {
+  opacity: 1;
+}
+
+.cv-preview {
+  position: relative;
+  height: 232px;
+  overflow: hidden;
+  border-radius: 15px 15px 0 0;
+  background-color: var(--subtle);
+  background-image: radial-gradient(circle at 1px 1px, rgba(17, 17, 26, 0.075) 1px, transparent 0);
+  background-size: 14px 14px;
+  border-bottom: 1px solid rgba(17, 17, 26, 0.06);
+}
+
+.cv-page {
+  position: absolute;
+  top: 52px;
+  left: 0;
+  right: 0;
+  width: min(244px, 64%);
+  margin: 0 auto;
+  aspect-ratio: 210 / 297;
+  overflow: hidden;
+  background: #fff;
+  border-radius: 6px;
+  box-shadow:
+    0 0 0 1px rgba(17, 17, 26, 0.06),
+    0 14px 30px -16px rgba(17, 17, 26, 0.3),
+    0 2px 6px -2px rgba(17, 17, 26, 0.08);
+  transition:
+    transform 560ms var(--ease-spring),
+    box-shadow var(--dur-slow) var(--ease-out);
+}
+
+.cv-card:is(:hover, :has(.cv-open:focus-visible)) .cv-page {
+  transform: translateY(-8px);
+  box-shadow:
+    0 0 0 1px rgba(17, 17, 26, 0.06),
+    0 24px 44px -18px rgba(17, 17, 26, 0.36),
+    0 4px 10px -4px rgba(17, 17, 26, 0.1);
+}
+
+.cv-chip {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 1;
+}
+
+.cv-foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px 16px 18px;
+}
+
+.cv-foot-text {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  gap: 3px;
+  min-width: 0;
+}
+
+.cv-title {
+  margin: 0 -4px;
+  padding: 0 4px;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 15.5px;
+  line-height: 1.4;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cv-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: nowrap;
+}
+
+.cv-open {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px 0 12px;
+  border: 1px solid rgba(17, 17, 26, 0.1);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 550;
+  text-decoration: none;
+  white-space: nowrap;
+  box-shadow: 0 1px 1px rgba(17, 17, 26, 0.04);
+  transition:
+    background-color var(--dur-base) ease,
+    border-color var(--dur-base) ease,
+    color var(--dur-base) ease;
+}
+
+/* The whole card opens the CV. */
+.cv-open::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  z-index: 1;
+  border-radius: 16px;
+}
+
+.cv-open:focus-visible {
+  outline: none;
+}
+
+.cv-open:focus-visible::after {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.cv-card:is(:hover, :has(.cv-open:focus-visible)) .cv-open {
+  background: color-mix(in oklab, var(--accent) 7%, #fff);
+  border-color: color-mix(in oklab, var(--accent) 28%, #fff);
+  color: color-mix(in oklab, var(--accent) 78%, #000);
+}
+
+.cv-arrow {
+  display: block;
+  flex-shrink: 0;
+  transition: transform 240ms var(--ease-out);
+}
+
+.cv-card:is(:hover, :has(.cv-open:focus-visible)) .cv-arrow {
+  transform: translateX(2px);
+}
+
+/* ---------- skeleton ---------- */
+.sk {
+  background-color: #ececf0;
+  background-image: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.75) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: cvb-shimmer 1.6s ease-in-out infinite;
+}
+
+.sk-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid rgba(17, 17, 26, 0.07);
+  border-radius: var(--r-xl);
+  animation: cvb-fade 300ms ease both;
+}
+
+.sk-preview {
+  position: relative;
+  height: 232px;
+  overflow: hidden;
+  border-radius: 15px 15px 0 0;
+  background: #f5f5f7;
+  border-bottom: 1px solid rgba(17, 17, 26, 0.05);
+}
+
+.sk-chip {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  width: 72px;
+  height: 24px;
+  border-radius: 999px;
+}
+
+.sk-page {
+  position: absolute;
+  top: 52px;
+  left: 0;
+  right: 0;
+  width: min(244px, 64%);
+  margin: 0 auto;
+  aspect-ratio: 210 / 297;
+  border-radius: 6px;
+}
+
+.sk-line {
+  display: block;
+  border-radius: 6px;
+}
+
+@keyframes cvb-shimmer {
+  0% {
+    background-position: -150% 0;
+  }
+  100% {
+    background-position: 250% 0;
+  }
+}
+
+/* ---------- responsive ---------- */
+@media (max-width: 1023px) {
+  .cv-grid {
+    gap: 20px;
+    margin-top: 32px;
+  }
+
+  .cv-preview,
+  .sk-preview {
+    height: 212px;
+  }
+
+  .cv-page,
+  .sk-page {
+    top: 48px;
+    width: min(220px, 64%);
+  }
+}
+
+@media (max-width: 719px) {
+  .cv-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+}
+
+@media (max-width: 599px) {
+  .cta {
+    width: 100%;
+    height: 48px;
+    font-size: 15px;
+  }
+
+  .cv-grid {
+    margin-top: 24px;
+  }
+
+  .cv-preview,
+  .sk-preview {
+    height: 196px;
+  }
+
+  .cv-page,
+  .sk-page {
+    top: 50px;
+    width: min(224px, 62%);
+  }
+
+  .cv-foot {
+    padding: 12px 12px 14px 16px;
+  }
+
+  .cv-open {
+    height: 44px;
+    padding: 0 12px 0 14px;
+    font-size: 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sk {
+    animation: none !important;
+  }
+
+  .cv-card:is(:hover, :has(.cv-open:focus-visible)),
+  .cv-card:is(:hover, :has(.cv-open:focus-visible)) .cv-page {
+    transform: none !important;
+  }
+}
