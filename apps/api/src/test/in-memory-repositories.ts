@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { GENERATION_STEP_COUNT, type GenerationJobStatus } from '@cv-builder/shared';
 import type { Repositories } from '../db/repositories';
 import type { CvDetailRecord, CvSummaryRecord } from '../modules/cvs/cvs.repository';
+import { JOB_FAILURES } from '../modules/generation/generation.failures';
 import type {
   GenerationJobRecord,
   JobLease,
@@ -23,7 +24,7 @@ export interface CvRow {
   title: string;
   targetRole: string | null;
   sourceText: string | null;
-  content: unknown;
+  content: CvDetailRecord['content'];
   contentVersion: number;
   createdAt: Date;
   updatedAt: Date;
@@ -49,6 +50,7 @@ export interface JobRow {
   status: GenerationJobStatus;
   input: unknown;
   result: unknown;
+  issues: GenerationJobRecord['issues'];
   attempts: number;
   progressStep: number;
   errorCode: string | null;
@@ -105,7 +107,7 @@ export function createInMemoryRepositories() {
   }
 
   function toJob(job: JobRow): GenerationJobRecord {
-    const { id, cvId, status, progressStep, errorCode, errorMessage, createdAt } = job;
+    const { id, cvId, status, progressStep, errorCode, errorMessage, issues, createdAt } = job;
     return {
       id,
       cvId,
@@ -113,6 +115,7 @@ export function createInMemoryRepositories() {
       progressStep,
       errorCode,
       errorMessage,
+      issues,
       createdAt,
       startedAt: job.startedAt,
       finishedAt: job.finishedAt,
@@ -125,6 +128,7 @@ export function createInMemoryRepositories() {
     return {
       ...toSummary(cv),
       sourceText: cv.sourceText,
+      content: cv.content,
       sourceDocuments: document ? [toDocument(document)] : [],
       generationJobs: job ? [toJob(job)] : [],
     };
@@ -139,7 +143,7 @@ export function createInMemoryRepositories() {
   const held = (lease: JobLease) =>
     db.jobs.find(
       (job) =>
-        job.id === lease.jobId && job.status === 'RUNNING' && job.attempts === lease.attempts,
+        job.id === lease.jobId && job.status === 'PROCESSING' && job.attempts === lease.attempts,
     );
 
   const repositories: Repositories = {
@@ -226,7 +230,7 @@ export function createInMemoryRepositories() {
         const cv = findCv(userId, cvId);
         if (!cv) return { kind: 'not_found' };
         const active = db.jobs.find(
-          (job) => job.cvId === cvId && (job.status === 'QUEUED' || job.status === 'RUNNING'),
+          (job) => job.cvId === cvId && (job.status === 'PENDING' || job.status === 'PROCESSING'),
         );
         if (active) return { kind: 'busy', jobId: active.id };
 
@@ -247,9 +251,10 @@ export function createInMemoryRepositories() {
           id: randomUUID(),
           cvId,
           userId,
-          status: 'QUEUED',
+          status: 'PENDING',
           input,
           result: null,
+          issues: null,
           attempts: 0,
           progressStep: 0,
           errorCode: null,
@@ -267,13 +272,18 @@ export function createInMemoryRepositories() {
         let failed = 0;
         for (const job of db.jobs) {
           const stale =
-            job.status === 'RUNNING' && (!job.heartbeatAt || job.heartbeatAt < staleBefore);
+            job.status === 'PROCESSING' && (!job.heartbeatAt || job.heartbeatAt < staleBefore);
           if (!stale) continue;
           if (job.attempts >= maxAttempts) {
-            Object.assign(job, { status: 'FAILED', errorCode: 'WORKER_LOST', finishedAt: now() });
+            Object.assign(job, {
+              status: 'FAILED',
+              errorCode: JOB_FAILURES.workerLost.code,
+              errorMessage: JOB_FAILURES.workerLost.message,
+              finishedAt: now(),
+            });
             failed += 1;
           } else {
-            Object.assign(job, { status: 'QUEUED', heartbeatAt: null, progressStep: 0 });
+            Object.assign(job, { status: 'PENDING', heartbeatAt: null, progressStep: 0 });
             requeued += 1;
           }
         }
@@ -281,12 +291,12 @@ export function createInMemoryRepositories() {
       },
       async claimNext() {
         const job = db.jobs
-          .filter((row) => row.status === 'QUEUED')
+          .filter((row) => row.status === 'PENDING')
           .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())[0];
         if (!job) return null;
         const startedAt = now();
         Object.assign(job, {
-          status: 'RUNNING',
+          status: 'PROCESSING',
           attempts: job.attempts + 1,
           progressStep: 0,
           startedAt,
@@ -307,14 +317,16 @@ export function createInMemoryRepositories() {
         if (step !== undefined) job.progressStep = step;
         return true;
       },
-      async succeed(lease, content) {
+      async succeed(lease, content, issues) {
         const job = held(lease);
         if (!job) return false;
         const finishedAt = now();
         Object.assign(job, {
-          status: 'SUCCEEDED',
+          status: 'COMPLETED',
           result: content,
+          issues,
           progressStep: GENERATION_STEP_COUNT,
+          heartbeatAt: finishedAt,
           finishedAt,
         });
         const cv = findCv(job.userId, job.cvId);
@@ -336,7 +348,7 @@ export function createInMemoryRepositories() {
         const job = held(lease);
         if (!job) return false;
         Object.assign(job, {
-          status: 'QUEUED',
+          status: 'PENDING',
           attempts: job.attempts - 1,
           progressStep: 0,
           startedAt: null,

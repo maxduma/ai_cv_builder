@@ -2,6 +2,8 @@ import { z } from 'zod';
 
 export const DEFAULT_ANTHROPIC_MODEL = 'claude-opus-5-5';
 export const DEFAULT_UPLOAD_DIR = './storage/uploads';
+/** How long one CV generation may take, retries included, before it fails as timed out. */
+export const DEFAULT_GENERATION_TIMEOUT_MS = 240_000;
 /**
  * Signs session tokens in development and tests when `JWT_SECRET` is not set. It is public (it is
  * in the repository), so production refuses to start with it.
@@ -32,6 +34,9 @@ const EnvSchema = z
     ANTHROPIC_API_KEY: unsetIfEmpty(z.string().trim().min(1).optional()),
     ANTHROPIC_MODEL: unsetIfEmpty(z.string().trim().min(1).default(DEFAULT_ANTHROPIC_MODEL)),
     UPLOAD_DIR: unsetIfEmpty(z.string().trim().min(1).default(DEFAULT_UPLOAD_DIR)),
+    GENERATION_TIMEOUT_MS: unsetIfEmpty(
+      z.coerce.number().int().min(1_000).max(900_000).default(DEFAULT_GENERATION_TIMEOUT_MS),
+    ),
     MOCK_GENERATION_STEP_MS: unsetIfEmpty(
       z.coerce.number().int().min(0).max(60_000).default(2_500),
     ),
@@ -44,6 +49,14 @@ const EnvSchema = z
         code: 'custom',
         path: ['JWT_SECRET'],
         message: 'Set a private secret in production, e.g. `openssl rand -base64 48`',
+      });
+    }
+    // Without a key, development falls back to the mock generator; production must not.
+    if (vars.ANTHROPIC_API_KEY === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['ANTHROPIC_API_KEY'],
+        message: 'Required in production: CV generation runs on Claude',
       });
     }
   });
@@ -64,7 +77,7 @@ export interface Config {
     secureCookies: boolean;
   };
   anthropic: {
-    /** Undefined until the user configures it; AI features are disabled without it. */
+    /** Required in production. Without it, development generates CVs with the mock generator. */
     apiKey: string | undefined;
     model: string;
   };
@@ -72,7 +85,11 @@ export interface Config {
     /** Directory for uploaded source files (relative paths resolve against the working directory). */
     uploadDir: string;
   };
-  /** Until Claude is wired up, CVs are "generated" by a mock that walks through the real steps. */
+  generation: {
+    /** Deadline for one generation job, retries included. */
+    timeoutMs: number;
+  };
+  /** Without an Anthropic key (development only), CVs are "generated" by a mock that walks through the real steps. */
   mockGeneration: {
     stepMs: number;
     /** Share of runs that fail (0–1), to exercise the failure screen. */
@@ -108,6 +125,9 @@ export function parseEnv(env: Record<string, string | undefined>): Config {
     },
     storage: {
       uploadDir: vars.UPLOAD_DIR,
+    },
+    generation: {
+      timeoutMs: vars.GENERATION_TIMEOUT_MS,
     },
     mockGeneration: {
       stepMs: vars.MOCK_GENERATION_STEP_MS,

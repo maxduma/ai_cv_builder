@@ -1,28 +1,44 @@
 import { SOURCE_PDF_MAX_PAGES } from '@cv-builder/shared';
 import { createApp } from './app';
-import { InvalidEnvError, parseEnv } from './config/env';
+import { type Config, InvalidEnvError, parseEnv } from './config/env';
 import { createPrismaClient, pingDatabase } from './db/prisma';
 import { createRepositories } from './db/repositories';
+import { createClaudeClient } from './integrations/ai/claude-client';
 import { createUnpdfTextExtractor } from './integrations/extraction/unpdf-pdf-text-extractor';
 import { createLocalFileStorage } from './integrations/storage/local-file-storage';
-import { createLogger } from './lib/logger';
+import { createLogger, type Logger } from './lib/logger';
 import { createPasswordHasher } from './modules/auth/password-hasher';
 import { createSessionResolver } from './modules/auth/session-resolver';
 import { createSessionTokens } from './modules/auth/session-tokens';
+import { createClaudeCvGenerator } from './modules/generation/claude/claude-cv-generator';
+import type { CvGenerator } from './modules/generation/cv-generator';
 import { createGenerationWorker } from './modules/generation/generation.worker';
 import { createMockCvGenerator } from './modules/generation/mock-cv-generator';
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 const PDF_PARSE_TIMEOUT_MS = 15_000;
 
+/**
+ * Claude writes the CVs. Without an API key, which only development allows (see config/env.ts),
+ * a mock stands in so the rest of the app can still be used.
+ */
+function createCvGenerator(config: Config, logger: Logger): CvGenerator {
+  const { apiKey, model } = config.anthropic;
+  if (!apiKey) {
+    logger.warn('ANTHROPIC_API_KEY is not set: CV generation uses the development mock');
+    return createMockCvGenerator(config.mockGeneration);
+  }
+  logger.info({ model }, 'CV generation uses Claude');
+  return createClaudeCvGenerator({
+    client: createClaudeClient({ apiKey, model, logger: logger.child({ module: 'claude' }) }),
+  });
+}
+
 async function main(): Promise<void> {
   const config = parseEnv(process.env);
   const logger = createLogger(config);
   const prisma = createPrismaClient(config.databaseUrl);
 
-  if (!config.anthropic.apiKey) {
-    logger.warn('ANTHROPIC_API_KEY is not set: AI features are disabled until it is configured.');
-  }
   if (config.auth.usingDevJwtSecret) {
     // Production refuses to start without JWT_SECRET (see config/env.ts).
     logger.warn('JWT_SECRET is not set: sessions are signed with the public development secret.');
@@ -50,11 +66,11 @@ async function main(): Promise<void> {
   });
 
   // CV generation runs in this process; the jobs themselves live in PostgreSQL.
-  logger.info('CV generation uses the mock generator until Claude is wired up.');
   const worker = createGenerationWorker({
     repository: repositories.generation,
-    generator: createMockCvGenerator(config.mockGeneration),
+    generator: createCvGenerator(config, logger),
     logger: logger.child({ module: 'generation-worker' }),
+    jobTimeoutMs: config.generation.timeoutMs,
   });
 
   const server = app.listen(config.port, '0.0.0.0', (error) => {
@@ -77,7 +93,8 @@ async function main(): Promise<void> {
       process.exit(1);
     }, SHUTDOWN_TIMEOUT_MS).unref();
 
-    // Stopping the worker hands a running job back to the queue instead of leaving it stale.
+    // Stopping the worker hands the jobs in progress back to the queue instead of leaving them
+    // stale.
     const workerStopped = worker.stop();
     server.close(async (error) => {
       await workerStopped;

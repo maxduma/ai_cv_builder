@@ -52,27 +52,29 @@ model Cv {
 }
 
 enum GenerationJobStatus {
-  QUEUED
-  RUNNING
-  SUCCEEDED
+  PENDING
+  PROCESSING
+  COMPLETED
   FAILED
 
   @@map("generation_job_status")
 }
 
 // A persistent, asynchronous CV generation run. Postgres acts as the queue: a worker claims
-// QUEUED jobs with `FOR UPDATE SKIP LOCKED` and keeps `heartbeat_at` fresh while running.
+// PENDING jobs with `FOR UPDATE SKIP LOCKED` and keeps `heartbeat_at` fresh while processing.
 model GenerationJob {
   id           String              @id @default(uuid(7)) @db.Uuid
   cvId         String              @map("cv_id") @db.Uuid
   userId       String              @map("user_id") @db.Uuid
-  status       GenerationJobStatus @default(QUEUED)
+  status       GenerationJobStatus @default(PENDING)
   /// Validated snapshot of the parameters the job was created with.
   input        Json
-  /// Validated AI output; copied to `cvs.content` when the job succeeds.
+  /// Validated AI output; copied to `cvs.content` when the job completes.
   result       Json?
+  /// Validated list of what the AI found missing or unclear in the sources (see shared GenerationIssue).
+  issues       Json?
   attempts     Int                 @default(0)
-  /// Current step of a running job (0–3); 4 once it has succeeded.
+  /// Current step of a processing job (0–3); 4 once it has completed.
   progressStep Int                 @default(0) @map("progress_step")
   errorCode    String?             @map("error_code")
   errorMessage String?             @map("error_message")
