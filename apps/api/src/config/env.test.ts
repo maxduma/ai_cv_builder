@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_ANTHROPIC_MODEL, DEFAULT_UPLOAD_DIR, parseEnv } from './env';
+import { DEFAULT_ANTHROPIC_MODEL, DEFAULT_UPLOAD_DIR, DEV_JWT_SECRET, parseEnv } from './env';
 
 const DATABASE_URL = 'postgresql://user:pass@localhost:5432/app';
+const JWT_SECRET = 'a-test-secret-that-is-long-enough-for-hs256';
 
 describe('parseEnv', () => {
   it('applies defaults', () => {
@@ -10,6 +11,7 @@ describe('parseEnv', () => {
       port: 4000,
       logLevel: 'info',
       databaseUrl: DATABASE_URL,
+      auth: { jwtSecret: DEV_JWT_SECRET, usingDevJwtSecret: true, secureCookies: false },
       anthropic: { apiKey: undefined, model: DEFAULT_ANTHROPIC_MODEL },
       storage: { uploadDir: DEFAULT_UPLOAD_DIR },
       mockGeneration: { stepMs: 2_500, failRate: 0 },
@@ -22,6 +24,7 @@ describe('parseEnv', () => {
       NODE_ENV: 'production',
       PORT: '8080',
       LOG_LEVEL: 'debug',
+      JWT_SECRET,
       ANTHROPIC_API_KEY: 'sk-test',
       ANTHROPIC_MODEL: 'claude-sonnet-5-5',
       UPLOAD_DIR: '/data/uploads',
@@ -32,6 +35,7 @@ describe('parseEnv', () => {
       nodeEnv: 'production',
       port: 8080,
       logLevel: 'debug',
+      auth: { jwtSecret: JWT_SECRET, usingDevJwtSecret: false, secureCookies: true },
       anthropic: { apiKey: 'sk-test', model: 'claude-sonnet-5-5' },
       storage: { uploadDir: '/data/uploads' },
       mockGeneration: { stepMs: 0, failRate: 0.5 },
@@ -43,12 +47,25 @@ describe('parseEnv', () => {
       DATABASE_URL,
       PORT: '',
       LOG_LEVEL: '',
+      JWT_SECRET: '',
       ANTHROPIC_API_KEY: '',
       ANTHROPIC_MODEL: '',
     });
+    expect(config.auth.jwtSecret).toBe(DEV_JWT_SECRET);
     expect(config.port).toBe(4000);
     expect(config.logLevel).toBe('info');
     expect(config.anthropic).toEqual({ apiKey: undefined, model: DEFAULT_ANTHROPIC_MODEL });
+  });
+
+  it('requires a private JWT secret in production', () => {
+    expect(() => parseEnv({ DATABASE_URL, NODE_ENV: 'production' })).toThrow(/JWT_SECRET/);
+    expect(() =>
+      parseEnv({ DATABASE_URL, NODE_ENV: 'production', JWT_SECRET: DEV_JWT_SECRET }),
+    ).toThrow(/JWT_SECRET/);
+  });
+
+  it('rejects a JWT secret shorter than 32 bytes', () => {
+    expect(() => parseEnv({ DATABASE_URL, JWT_SECRET: 'too-short' })).toThrow(/JWT_SECRET/);
   });
 
   it('rejects an invalid port', () => {

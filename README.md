@@ -2,7 +2,7 @@
 
 A fullstack app for building tailored CVs with Claude.
 
-**Status:** the main flow works end to end with a mock generator. "My CVs" lists the user's CVs; "Create a new CV" takes a target role plus an uploaded PDF and/or a description, and generation runs as a background job whose progress the UI follows. Claude generation, the CV editor, PDF export and authentication come in later steps (see [Roadmap](#roadmap)).
+**Status:** the main flow works end to end with a mock generator. Users sign up and log in with an email and password; "My CVs" lists their CVs; "Create a new CV" takes a target role plus an uploaded PDF and/or a description, and generation runs as a background job whose progress the UI follows. Claude generation, the CV editor and PDF export come in later steps (see [Roadmap](#roadmap)).
 
 | Layer    | Stack                                                                     |
 | -------- | ------------------------------------------------------------------------- |
@@ -26,7 +26,7 @@ docker compose up --build
 
 The first start builds the dev image and installs dependencies, which takes a few minutes. After that, `docker compose up` is enough. Database migrations are applied automatically when the API starts.
 
-`ANTHROPIC_API_KEY` is the only secret. The app also starts without it (the health check reports AI as `not_configured`). Until Claude is wired up, CVs are "generated" by a mock that walks through the real steps and saves clearly labelled sample content.
+`ANTHROPIC_API_KEY` and `JWT_SECRET` are the only secrets, and both can stay empty in development. The app also starts without the API key (the health check reports AI as `not_configured`). Without `JWT_SECRET` the API signs sessions with a public development secret and logs a warning; in production it refuses to start without one. Until Claude is wired up, CVs are "generated" by a mock that walks through the real steps and saves clearly labelled sample content.
 
 ### Open it on your phone
 
@@ -61,8 +61,9 @@ Docker Compose reads `.env` (copy `.env.example`).
 
 | Variable                    | Default           | Purpose                                                                 |
 | --------------------------- | ----------------- | ----------------------------------------------------------------------- |
-| `ANTHROPIC_API_KEY`         | none              | The only secret. Required for AI features                               |
+| `ANTHROPIC_API_KEY`         | none              | Required for AI features                                                |
 | `ANTHROPIC_MODEL`           | `claude-opus-5-5` | Claude model used for generation                                        |
+| `JWT_SECRET`                | dev fallback      | Signs login sessions. Required in production: `openssl rand -base64 48` |
 | `LOG_LEVEL`                 | `info`            | API log level (`fatal` … `trace`, `silent`)                             |
 | `MOCK_GENERATION_STEP_MS`   | `2500`            | Duration of each of the mock generator's four steps                     |
 | `MOCK_GENERATION_FAIL_RATE` | `0`               | Share of mock generations that fail (0–1); `1` shows the failure screen |
@@ -85,8 +86,9 @@ apps/
       config/               environment validation (Zod)
       db/                   Prisma client (node-postgres driver adapter), DB ping, repositories wiring
       http/                 Express wiring: router (composition root), middleware
-      modules/<domain>/     routes → service → repository (+ mapper) per domain:
-                            cvs, source-documents (PDF upload), generation (jobs, worker, mock)
+      modules/<domain>/     routes → service → repository (+ mapper) per domain: auth (sign-up,
+                            login, sessions), users, cvs, source-documents (PDF upload),
+                            generation (jobs, worker, mock)
       integrations/         storage (uploaded files on disk), extraction (PDF → text with unpdf)
       lib/                  logger, error types
       test/                 in-memory repositories and app harness for tests
@@ -94,6 +96,7 @@ apps/
   web/                      React SPA (Vite)
     src/
       app/                  router, layout, route error boundary
+      features/auth/        log in and sign up pages, the current session
       features/cvs/         dashboard (My CVs), create (the form), status (generation progress)
       ui/                   shared pieces from the design: status chips, state panels, CV thumbnail, icons
       styles/               design tokens and base/component CSS (from the design canvas)
@@ -136,10 +139,14 @@ Errors are handled in one place. Every error response has the shape `{ error: { 
 
 ### REST API
 
-Everything below `/api/health` acts on behalf of the current user; another user's CV or job answers 404.
+Apart from `/api/health` and signing up, logging in and logging out, every route acts on behalf of the logged-in user and answers 401 without a session. Another user's CV or job answers 404.
 
 | Method and path                         | Purpose                                                                     |
 | --------------------------------------- | --------------------------------------------------------------------------- |
+| `POST /api/auth/signup`                 | Create an account `{ name, email, password }` and log in; `409` if taken    |
+| `POST /api/auth/login`                  | Log in `{ email, password }`: sets the session cookie, or `401`             |
+| `POST /api/auth/logout`                 | Log out: clears the session cookie (`204`)                                  |
+| `GET /api/auth/me`                      | The logged-in user, or `401` without a valid session                        |
 | `GET /api/cvs`                          | The user's CVs with their status (`draft`, `generating`, `failed`, `ready`) |
 | `POST /api/cvs`                         | Create a draft `{ targetRole?, sourceText? }`                               |
 | `GET /api/cvs/:cvId`                    | A CV with its sources and latest generation                                 |
@@ -151,9 +158,13 @@ Everything below `/api/health` acts on behalf of the current user; another user'
 
 Uploads are checked before anything is stored: CV ownership (before the body is read), size (10 MB), type (declared type and the `%PDF-` signature), page count (20) and readable text. Files are stored under keys the API generates; the client's file name is only displayed.
 
-### Users and ownership
+### Authentication and ownership
 
-Authentication is out of scope for now. The `currentUser` middleware takes a resolver function, and the current resolver always returns a demo user that the API upserts at startup. Every route below `/api/health` goes through this middleware, and adding real auth later means replacing only the resolver.
+Users sign up with a name, an email and a password. Emails are stored trimmed and lowercased, so they are unique regardless of case. Passwords are hashed with scrypt from `node:crypto` (OWASP parameters, a random salt per password, the parameters stored with each hash). Login errors don't reveal whether an email has an account: an unknown email gets the same `401` as a wrong password and costs the same hash check.
+
+Signing up or logging in sets the session cookie `cvb_session`: `HttpOnly` (page scripts can't read it), `SameSite=Lax`, `Path=/api`, and `Secure` in production. It holds a JWT signed with `JWT_SECRET` (HS256 only), which expires after 7 days. The `currentUser` middleware verifies it and loads the user on every route except health, sign-up, login and logout. Services take the owner only from that session; no endpoint accepts a user id from the client.
+
+Cross-site requests can't act with the session: `SameSite=Lax` keeps the cookie off cross-site POSTs, and the API only parses JSON bodies, which an HTML form can't send.
 
 Ownership is enforced at two levels:
 
@@ -167,7 +178,7 @@ erDiagram
   users ||--o{ cvs : owns
   cvs ||--o{ generation_jobs : "generated by"
   cvs ||--o{ source_documents : "built from"
-  users { uuid id  text email }
+  users { uuid id  text email  text name  text password_hash }
   cvs { uuid id  uuid user_id  text title  text target_role  text job_description  text source_text  jsonb content  int content_version }
   generation_jobs { uuid id  uuid cv_id  uuid user_id  enum status  int progress_step  jsonb input  jsonb result  int attempts  timestamptz heartbeat_at }
   source_documents { uuid id  uuid cv_id  uuid user_id  text original_name  int page_count  text storage_key  text extracted_text }
@@ -208,6 +219,9 @@ stateDiagram-v2
   - TypeScript 6.0. typescript-eslint doesn't support TypeScript 7 yet.
   - React Router 7. v8 was released very recently.
 - **Default ports:** API on 4000 and PostgreSQL on 54320, which avoids clashing with common local services on 3000 and 5432. Override them in `.env`.
+- **Stateless sessions:** the server keeps no session list, so logging out only removes the cookie. A token that leaked stays valid until it expires (7 days at most). Revoking tokens would need a session table or a per-user token version.
+- **No login rate limiting yet:** limiting by client IP needs `trust proxy` configured for whatever proxy runs in front of the API; without it every client shares the proxy's IP and one attacker could lock everyone out. It is a follow-up. Meanwhile every guess costs a full scrypt hash.
+- **Sign-up reveals taken emails** (`409 EMAIL_TAKEN`), which a helpful sign-up form can't avoid without email verification. Login doesn't.
 
 ## Troubleshooting
 
@@ -223,4 +237,4 @@ stateDiagram-v2
 3. AI CV generation: ~~persistent jobs and worker~~ (mock generator for now), Claude structured output, validation
 4. CV editor UI
 5. PDF export
-6. Authentication
+6. ~~Authentication~~

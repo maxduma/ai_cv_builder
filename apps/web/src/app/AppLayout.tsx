@@ -1,27 +1,40 @@
-import { Link, NavLink, Outlet } from 'react-router';
-import { BrandMarkIcon } from '../ui/icons';
+import { useState } from 'react';
+import { Outlet, useLocation } from 'react-router';
+import { useCurrentUser } from '../features/auth/api';
+import { AppHeader } from './AppHeader';
+import { UserMenu } from './UserMenu';
 import './layout.css';
 
 /** Page chrome from the design: a sticky, translucent header; each page renders its own `<main>`. */
 export function AppLayout() {
+  const user = useCurrentUser();
+  const location = useLocation();
+  // The account menu belongs to the page it was opened on, so going anywhere else (a link, Back
+  // or Forward) closes it. A stale page is forgotten during render (React's pattern for state that
+  // follows a changing value), so coming back to that page later doesn't reopen the menu.
+  const [menuOpenOn, setMenuOpenOn] = useState<string | null>(null);
+  if (menuOpenOn !== null && menuOpenOn !== location.key) {
+    setMenuOpenOn(null);
+  }
+  const menuOpen = menuOpenOn === location.key;
+  const setMenuOpen = (open: boolean) => setMenuOpenOn(open ? location.key : null);
+
   return (
     <>
-      <header className="app-header cvb-fade">
-        <div className="app-bar">
-          <Link to="/" className="brand" aria-label="CV Builder home">
-            <span className="brand-mark" aria-hidden="true">
-              <BrandMarkIcon />
-            </span>
-            <span className="brand-name">CV Builder</span>
-          </Link>
-          <nav className="app-nav" aria-label="Primary">
-            <NavLink to="/" end className="nav-link">
-              My CVs
-            </NavLink>
-          </nav>
-        </div>
-      </header>
+      <AppHeader>
+        {user && <UserMenu user={user} open={menuOpen} onOpenChange={setMenuOpen} />}
+      </AppHeader>
       <Outlet />
+      {menuOpen && (
+        // Outside the header: its backdrop-filter would confine a fixed element to the header.
+        <button
+          type="button"
+          className="menu-backdrop for-user"
+          tabIndex={-1}
+          aria-label="Close menu"
+          onClick={() => setMenuOpen(false)}
+        />
+      )}
     </>
   );
 }

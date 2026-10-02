@@ -1,3 +1,4 @@
+export * from './auth';
 export * from './cv';
 export * from './cv-content';
 export * from './errors';

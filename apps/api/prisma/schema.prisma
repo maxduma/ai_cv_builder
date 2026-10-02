@@ -11,11 +11,14 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(uuid(7)) @db.Uuid
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id           String   @id @default(uuid(7)) @db.Uuid
+  /// Stored trimmed and lowercased, so uniqueness is case-insensitive.
+  email        String   @unique
+  name         String
+  /// scrypt hash with its parameters (see modules/auth/password-hasher.ts). Never selected by default.
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   cvs Cv[]
 

@@ -6,6 +6,9 @@ export const ERROR_CODES = [
   'UNAUTHORIZED',
   'NOT_FOUND',
   'INTERNAL_ERROR',
+  // Authentication
+  'INVALID_CREDENTIALS',
+  'EMAIL_TAKEN',
   // Source PDF uploads
   'FILE_TOO_LARGE',
   'UNSUPPORTED_FILE_TYPE',

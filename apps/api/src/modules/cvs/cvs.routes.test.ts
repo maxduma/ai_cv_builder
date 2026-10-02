@@ -1,6 +1,13 @@
 import type { ApiErrorBody, CvDetail, CvListResponse } from '@cv-builder/shared';
 import { describe, expect, it } from 'vitest';
-import { sendJson, startApp, TEST_USER_HEADER, USER_A, USER_B } from '../../test/start-app';
+import {
+  sendJson,
+  startApp,
+  startAppWithTwoAccounts,
+  TEST_USER_HEADER,
+  USER_A,
+  USER_B,
+} from '../../test/start-app';
 
 async function createCv(baseUrl: string, body: unknown = { targetRole: 'AI Engineer' }) {
   const response = await sendJson(`${baseUrl}/api/cvs`, 'POST', body);
@@ -143,5 +150,33 @@ describe('PATCH /api/cvs/:cvId', () => {
 
     expect(response.status).toBe(404);
     expect(db.cvs[0]?.targetRole).toBe('AI Engineer');
+  });
+});
+
+describe('ownership with session cookies', () => {
+  it('answers 404 when another account reads or changes a CV', async () => {
+    const { baseUrl, db, owner, other } = await startAppWithTwoAccounts();
+    const created = await sendJson(
+      `${baseUrl}/api/cvs`,
+      'POST',
+      { targetRole: 'AI Engineer' },
+      { cookie: owner.cookie },
+    );
+    const cv = (await created.json()) as CvDetail;
+    const url = `${baseUrl}/api/cvs/${cv.id}`;
+
+    const mine = await fetch(url, { headers: { cookie: owner.cookie } });
+    const read = await fetch(url, { headers: { cookie: other.cookie } });
+    const changed = await sendJson(
+      url,
+      'PATCH',
+      { targetRole: 'Hijacked' },
+      { cookie: other.cookie },
+    );
+
+    expect(mine.status).toBe(200);
+    expect(read.status).toBe(404);
+    expect(changed.status).toBe(404);
+    expect(db.cvs).toMatchObject([{ userId: owner.user.id, targetRole: 'AI Engineer' }]);
   });
 });

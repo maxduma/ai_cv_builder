@@ -1,6 +1,12 @@
 import type { ApiErrorBody, CvDetail, GenerationJobDto } from '@cv-builder/shared';
 import { describe, expect, it } from 'vitest';
-import { sendJson, startApp, TEST_USER_HEADER, USER_B } from '../../test/start-app';
+import {
+  sendJson,
+  startApp,
+  startAppWithTwoAccounts,
+  TEST_USER_HEADER,
+  USER_B,
+} from '../../test/start-app';
 
 const NOTES = 'Six years building payment APIs in Go; led a team of four engineers.';
 
@@ -100,6 +106,46 @@ describe('GET /api/generation-jobs/:jobId', () => {
 
     expect(mine.status).toBe(200);
     expect(await mine.json()).toMatchObject({ id: job.id, status: 'QUEUED' });
+    expect(theirs.status).toBe(404);
+  });
+});
+
+describe('ownership with session cookies', () => {
+  async function setupAccounts() {
+    const app = await startAppWithTwoAccounts();
+    const created = await sendJson(
+      `${app.baseUrl}/api/cvs`,
+      'POST',
+      { targetRole: 'Senior Backend Engineer', sourceText: NOTES },
+      { cookie: app.owner.cookie },
+    );
+    const cv = (await created.json()) as CvDetail;
+    const start = (cookie: string) =>
+      fetch(`${app.baseUrl}/api/cvs/${cv.id}/generations`, { method: 'POST', headers: { cookie } });
+    return { ...app, start };
+  }
+
+  it("can't start a generation for another account's CV", async () => {
+    const { start, other, db } = await setupAccounts();
+
+    const response = await start(other.cookie);
+
+    expect(response.status).toBe(404);
+    expect(db.jobs).toHaveLength(0);
+  });
+
+  it("can't read another account's generation", async () => {
+    const { start, owner, other, baseUrl } = await setupAccounts();
+    const job = (await (await start(owner.cookie)).json()) as GenerationJobDto;
+
+    const mine = await fetch(`${baseUrl}/api/generation-jobs/${job.id}`, {
+      headers: { cookie: owner.cookie },
+    });
+    const theirs = await fetch(`${baseUrl}/api/generation-jobs/${job.id}`, {
+      headers: { cookie: other.cookie },
+    });
+
+    expect(mine.status).toBe(200);
     expect(theirs.status).toBe(404);
   });
 });

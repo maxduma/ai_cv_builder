@@ -13,6 +13,7 @@ import {
   createFakeExtractor,
   sendJson,
   startApp,
+  startAppWithTwoAccounts,
   TEST_USER_HEADER,
   USER_B,
 } from '../../test/start-app';
@@ -154,6 +155,28 @@ describe('PUT /api/cvs/:cvId/source-document', () => {
     expect(response.status).toBe(404);
     expect(extractorCalls).toHaveLength(0);
     expect(files.size).toBe(0);
+  });
+
+  it("doesn't read uploads for another account's CV (session cookies)", async () => {
+    const { baseUrl, owner, other, extractorCalls, files, db } = await startAppWithTwoAccounts();
+    const created = await sendJson(
+      `${baseUrl}/api/cvs`,
+      'POST',
+      { targetRole: 'AI Engineer' },
+      { cookie: owner.cookie },
+    );
+    const cv = (await created.json()) as CvDetail;
+
+    const response = await fetch(`${baseUrl}/api/cvs/${cv.id}/source-document`, {
+      method: 'PUT',
+      body: pdfForm(),
+      headers: { cookie: other.cookie },
+    });
+
+    expect(response.status).toBe(404);
+    expect(extractorCalls).toHaveLength(0);
+    expect(files.size).toBe(0);
+    expect(db.documents).toHaveLength(0);
   });
 });
 

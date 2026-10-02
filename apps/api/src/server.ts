@@ -6,12 +6,11 @@ import { createRepositories } from './db/repositories';
 import { createUnpdfTextExtractor } from './integrations/extraction/unpdf-pdf-text-extractor';
 import { createLocalFileStorage } from './integrations/storage/local-file-storage';
 import { createLogger } from './lib/logger';
+import { createPasswordHasher } from './modules/auth/password-hasher';
+import { createSessionResolver } from './modules/auth/session-resolver';
+import { createSessionTokens } from './modules/auth/session-tokens';
 import { createGenerationWorker } from './modules/generation/generation.worker';
 import { createMockCvGenerator } from './modules/generation/mock-cv-generator';
-import { createUsersRepository } from './modules/users/users.repository';
-
-/** Until authentication exists, every request acts as this user. */
-const DEMO_USER = { email: 'demo@cv-builder.local', name: 'Demo User' };
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 const PDF_PARSE_TIMEOUT_MS = 15_000;
@@ -24,19 +23,24 @@ async function main(): Promise<void> {
   if (!config.anthropic.apiKey) {
     logger.warn('ANTHROPIC_API_KEY is not set: AI features are disabled until it is configured.');
   }
-
-  const demoUser = await createUsersRepository(prisma).upsertByEmail(
-    DEMO_USER.email,
-    DEMO_USER.name,
-  );
+  if (config.auth.usingDevJwtSecret) {
+    // Production refuses to start without JWT_SECRET (see config/env.ts).
+    logger.warn('JWT_SECRET is not set: sessions are signed with the public development secret.');
+  }
 
   const repositories = createRepositories(prisma);
+  const sessionTokens = createSessionTokens({ secret: config.auth.jwtSecret });
 
   const app = createApp({
     config,
     logger,
     checkDatabase: () => pingDatabase(prisma),
-    resolveCurrentUser: async () => demoUser,
+    resolveCurrentUser: createSessionResolver({ tokens: sessionTokens, users: repositories.users }),
+    auth: {
+      passwordHasher: createPasswordHasher(),
+      sessionTokens,
+      secureCookies: config.auth.secureCookies,
+    },
     repositories,
     fileStorage: createLocalFileStorage(config.storage.uploadDir),
     pdfTextExtractor: createUnpdfTextExtractor({

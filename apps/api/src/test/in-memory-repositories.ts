@@ -8,6 +8,14 @@ import type {
   StartJobResult,
 } from '../modules/generation/generation.repository';
 import type { SourceDocumentRecord } from '../modules/source-documents/source-documents.repository';
+import type { UserRecord } from '../modules/users/users.repository';
+
+export interface UserRow {
+  id: string;
+  email: string;
+  name: string;
+  passwordHash: string;
+}
 
 export interface CvRow {
   id: string;
@@ -52,11 +60,17 @@ export interface JobRow {
 }
 
 /**
- * The repositories, backed by arrays: behaves like the Prisma implementation (scoping by user,
- * one active job per CV, leases) without a database. `db` exposes the rows to assertions.
+ * The repositories, backed by arrays: behaves like the Prisma implementation (unique emails,
+ * scoping by user, one active job per CV, leases) without a database. `db` exposes the rows to
+ * assertions.
  */
 export function createInMemoryRepositories() {
-  const db = { cvs: [] as CvRow[], documents: [] as DocumentRow[], jobs: [] as JobRow[] };
+  const db = {
+    users: [] as UserRow[],
+    cvs: [] as CvRow[],
+    documents: [] as DocumentRow[],
+    jobs: [] as JobRow[],
+  };
 
   // A clock that always moves forward keeps "latest first" ordering deterministic.
   let clock = Date.UTC(2026, 0, 1);
@@ -68,6 +82,10 @@ export function createInMemoryRepositories() {
     rows
       .filter((row) => row.cvId === cvId)
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
+
+  function toUser({ id, email, name }: UserRow): UserRecord {
+    return { id, email, name };
+  }
 
   function toSummary(cv: CvRow): CvSummaryRecord {
     const job = latest(db.jobs, cv.id);
@@ -125,6 +143,23 @@ export function createInMemoryRepositories() {
     );
 
   const repositories: Repositories = {
+    users: {
+      async create(user) {
+        if (db.users.some((row) => row.email === user.email)) return { kind: 'email_taken' };
+        const row: UserRow = { id: randomUUID(), ...user };
+        db.users.push(row);
+        return { kind: 'created', user: toUser(row) };
+      },
+      async findCredentialsByEmail(email) {
+        const row = db.users.find((user) => user.email === email);
+        return row ? { ...toUser(row), passwordHash: row.passwordHash } : null;
+      },
+      async findById(id) {
+        const row = db.users.find((user) => user.id === id);
+        return row ? toUser(row) : null;
+      },
+    },
+
     cvs: {
       async listForUser(userId) {
         return db.cvs
