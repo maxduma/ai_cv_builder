@@ -1,0 +1,12 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Versions shared by several workspace packages, referenced as "catalog:" in package.json.
+# Keeping one version of zod matters: the API's error handler relies on `instanceof ZodError`
+# for errors thrown by schemas defined in @cv-builder/shared.
+catalog:
+  '@types/node': ^22.20.5
+  typescript: ~6.0.3
+  vitest: ^5.0.3
+  zod: ^4.6.5
