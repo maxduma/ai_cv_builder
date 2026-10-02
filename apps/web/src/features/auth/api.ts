@@ -2,6 +2,7 @@ import type { AuthResponse, AuthUser, LoginRequest, SignUpRequest } from '@cv-bu
 import { type QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { ApiError, api } from '../../lib/api-client';
+import { claimEditorSessions, clearEditorSessions } from '../editor/editor-session';
 
 /** Who is signed in: the user, or `null` for nobody. The session cookie itself is httpOnly. */
 export const sessionKey = ['session'] as const;
@@ -50,6 +51,8 @@ function removeUserData(queryClient: QueryClient) {
  */
 function startSession(queryClient: QueryClient, user: AuthUser) {
   removeUserData(queryClient);
+  // Edits in progress stay only if it's the same person, back after their session expired.
+  claimEditorSessions(user.id);
   queryClient.setQueryData<AuthUser | null>(sessionKey, user);
 }
 
@@ -85,6 +88,7 @@ export function useLogout() {
       queryClient.setQueryData<AuthUser | null>(sessionKey, null);
       await navigate('/login', { replace: true, flushSync: true });
       removeUserData(queryClient);
+      clearEditorSessions();
     },
   });
 }

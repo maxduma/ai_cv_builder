@@ -291,3 +291,89 @@ export function LogoutIcon(props: IconProps) {
     </svg>
   );
 }
+
+/** Three dots: an entry's "more actions" menu. */
+export function MoreIcon(props: IconProps) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" {...props}>
+      <circle cx="3.5" cy="8" r="1.3" fill="currentColor" />
+      <circle cx="8" cy="8" r="1.3" fill="currentColor" />
+      <circle cx="12.5" cy="8" r="1.3" fill="currentColor" />
+    </svg>
+  );
+}
+
+export function ArrowUpIcon(props: IconProps) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" {...props}>
+      <path d="M8 13V3.5M4.5 7L8 3.5L11.5 7" {...stroke} strokeWidth="1.4" />
+    </svg>
+  );
+}
+
+export function ArrowDownIcon(props: IconProps) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" {...props}>
+      <path d="M8 3V12.5M4.5 9L8 12.5L11.5 9" {...stroke} strokeWidth="1.4" />
+    </svg>
+  );
+}
+
+export function TrashIcon({ size = 16, ...props }: IconProps & { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" aria-hidden="true" {...props}>
+      <path
+        d="M3 4.5H13M6.5 4.5V3.25C6.5 2.84 6.84 2.5 7.25 2.5H8.75C9.16 2.5 9.5 2.84 9.5 3.25V4.5M4.5 4.5L5 12.6C5.04 13.1 5.46 13.5 5.96 13.5H10.04C10.54 13.5 10.96 13.1 11 12.6L11.5 4.5"
+        {...stroke}
+        strokeWidth="1.35"
+      />
+    </svg>
+  );
+}
+
+/** A padlock: contact details always stay at the top of the CV. */
+export function LockIcon(props: IconProps) {
+  return (
+    <svg width="12" height="14" viewBox="0 0 12 14" aria-hidden="true" {...props}>
+      <rect
+        x="2.5"
+        y="6"
+        width="7"
+        height="5.5"
+        rx="1.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+      />
+      <path
+        d="M4 6V4.5C4 3.4 4.9 2.5 6 2.5C7.1 2.5 8 3.4 8 4.5V6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+      />
+    </svg>
+  );
+}
+
+/** A tick in a tinted circle, as in "Draft saved". */
+export function CheckCircleIcon(props: IconProps) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" {...props}>
+      <circle cx="7" cy="7" r="6" fill="currentColor" fillOpacity="0.14" />
+      <path d="M4.3 7.2L6.2 9L9.7 5.2" {...stroke} strokeWidth="1.6" />
+    </svg>
+  );
+}
+
+/** A small arrow pointing at where a question's answer goes, or past a skipped question. */
+export function SmallArrowIcon({ size = 12, ...props }: IconProps & { size?: 12 | 14 }) {
+  return size === 14 ? (
+    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" {...props}>
+      <path d="M3 7H10.5M8 4.5L10.5 7L8 9.5" {...stroke} strokeWidth="1.5" />
+    </svg>
+  ) : (
+    <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" {...props}>
+      <path d="M2 6H9.5M6.75 3.25L9.5 6L6.75 8.75" {...stroke} strokeWidth="1.4" />
+    </svg>
+  );
+}

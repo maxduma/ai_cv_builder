@@ -1,0 +1,546 @@
+/* ---------- A few quick questions (Clarify.dc.html) ---------- */
+.cq-main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 44px 32px 96px;
+}
+
+.ok-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 28px;
+  padding: 0 12px 0 8px;
+  border-radius: 999px;
+  background: #eef8f2;
+  box-shadow: inset 0 0 0 1px rgba(34, 164, 93, 0.22);
+  color: var(--success-ink);
+  font-size: 13px;
+  font-weight: 550;
+  line-height: 1;
+}
+
+.ok-chip svg {
+  display: block;
+  flex-shrink: 0;
+}
+
+.cq-title-xl {
+  margin: 16px 0 0;
+  color: var(--ink);
+  font-size: 34px;
+  line-height: 1.12;
+  font-weight: 600;
+  letter-spacing: -0.033em;
+}
+
+.cq-sub {
+  margin: 10px 0 0;
+  max-width: 600px;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.cq-progress {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 24px;
+}
+
+/* One 32px segment per question: the count is set inline (the design hard-codes 4). */
+.cq-segs {
+  display: grid;
+  grid-template-columns: repeat(4, 32px);
+  gap: 5px;
+}
+
+.cq-seg {
+  display: block;
+  height: 5px;
+  border-radius: 999px;
+  background: #e4e4ea;
+  transition: background-color var(--dur-slow) ease;
+}
+
+.cq-seg.is-cur {
+  background: color-mix(in oklab, var(--accent) 38%, #e4e4ea);
+}
+
+.cq-seg.is-on {
+  background: var(--accent);
+}
+
+.cq-seg.is-skip {
+  background: repeating-linear-gradient(135deg, #d9d9e0 0 3px, #ededf1 3px 6px);
+}
+
+.cq-count {
+  color: var(--text-2);
+  font-size: 13.5px;
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
+}
+
+.cq-time {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.cq-time svg {
+  display: block;
+  color: var(--faint);
+}
+
+/* ---------- question cards ---------- */
+.cq-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 20px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cq-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+  box-shadow: var(--sh-sm);
+  transition:
+    border-color var(--dur-base) ease,
+    box-shadow var(--dur-slow) var(--ease-out);
+  animation: cvb-rise var(--dur-enter) var(--ease-out) both;
+}
+
+.cq-card.is-active {
+  border-color: color-mix(in oklab, var(--accent) 32%, rgba(17, 17, 26, 0.08));
+  box-shadow:
+    0 0 0 4px color-mix(in oklab, var(--accent) 9%, transparent),
+    var(--sh-sm);
+}
+
+.cq-card.is-pending {
+  background: rgba(255, 255, 255, 0.6);
+  box-shadow: none;
+}
+
+.cq-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  width: 100%;
+  padding: 18px 20px;
+  border: 0;
+  border-radius: var(--r-xl);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.cq-head.is-btn {
+  align-items: center;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) ease;
+}
+
+.cq-head.is-btn:hover {
+  background: rgba(17, 17, 26, 0.025);
+}
+
+.cq-head.is-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* A closed card that can't be opened (its answer is applied): laid out like the button. */
+.cq-head.is-static {
+  align-items: center;
+}
+
+/* Scoped: `.num` is too generic a name for a global class. */
+.cq-card .num {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1.5px var(--line-2);
+  color: var(--muted);
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.cq-card .num.is-cur {
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+  color: color-mix(in oklab, var(--accent) 82%, #000);
+}
+
+.cq-card .num.is-done {
+  background: var(--accent);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--accent) 78%, #000),
+    0 4px 10px -4px color-mix(in oklab, var(--accent) 60%, transparent);
+  color: #fff;
+}
+
+.cq-card .num.is-skip {
+  background: var(--subtle);
+  box-shadow: inset 0 0 0 1.5px var(--line);
+  color: var(--faint);
+}
+
+.cq-card .num svg {
+  display: block;
+  animation: cvb-pop-in 380ms var(--ease-spring) both;
+}
+
+.cq-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-grow: 1;
+  min-width: 0;
+  padding-top: 3px;
+}
+
+.cq-head.is-btn .cq-titles,
+.cq-head.is-static .cq-titles {
+  padding-top: 0;
+}
+
+.cq-q {
+  margin: 0;
+  color: var(--ink);
+  font-size: 16px;
+  line-height: 1.4;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+}
+
+.cq-card.is-pending .cq-q {
+  color: var(--text-3);
+  font-weight: 550;
+}
+
+.cq-why {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.cq-answer {
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 13.5px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cq-answer.is-skip {
+  color: var(--muted);
+}
+
+/* A question the AI asked again, waiting for more detail. */
+.cq-answer.is-follow {
+  color: var(--warning-ink);
+}
+
+.cq-target {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  margin-top: 2px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: var(--subtle);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 550;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.cq-target svg {
+  display: block;
+  color: var(--faint);
+}
+
+.cq-edit {
+  flex-shrink: 0;
+  color: color-mix(in oklab, var(--accent) 88%, #000);
+  font-size: 13.5px;
+  font-weight: 550;
+}
+
+.cq-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 0 20px 18px 62px;
+  animation: cvb-fade-up 320ms var(--ease-out) both;
+}
+
+.cq-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--warning-ink);
+  font-size: 13px;
+  line-height: 1.45;
+  font-weight: 500;
+  animation: cvb-fade-up 220ms var(--ease-out) both;
+}
+
+.cq-hint svg {
+  display: block;
+  flex-shrink: 0;
+}
+
+/* The AI's follow-up can run to a few lines: the icon stays by the first one. */
+.cq-hint.is-follow {
+  align-items: flex-start;
+}
+
+.cq-hint.is-follow svg {
+  margin-top: 2px;
+}
+
+.cq-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 4px;
+}
+
+.cq-foot-r {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cq-kbd {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.cq-kbd kbd {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 5px;
+  background: var(--subtle);
+  box-shadow:
+    inset 0 0 0 1px var(--line),
+    0 1px 0 var(--line);
+  color: var(--text-3);
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 11px;
+}
+
+/* ---------- an answer's update of the CV (under the answer, aligned with it) ---------- */
+.cq-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: -10px;
+  padding: 0 20px 16px 62px;
+}
+
+/* Focused only by script, when Try again gives way to the status it started. */
+.cq-status:focus {
+  outline: none;
+}
+
+.cq-status-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+  font-weight: 500;
+}
+
+.cq-status-line:empty {
+  display: none;
+}
+
+/* Icons stay by the first line when a long target wraps. */
+.cq-status-line svg {
+  display: block;
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+
+.cq-status-line .spinner {
+  width: 12px;
+  height: 12px;
+  margin-top: 3px;
+  border-width: 1.5px;
+}
+
+.cq-status-line.is-ok {
+  color: var(--success-ink);
+}
+
+.cq-status-line.is-failed {
+  color: var(--danger-ink);
+}
+
+.cq-status-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cq-ref {
+  color: var(--faint);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.cq-status .error {
+  flex-basis: 100%;
+}
+
+/* ---------- finish ---------- */
+.cq-finish {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 20px;
+  padding: 18px 20px;
+  border-radius: var(--r-xl);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--sh-sm);
+}
+
+.cq-finish.is-ready {
+  border-color: rgba(34, 164, 93, 0.28);
+  background: linear-gradient(180deg, #f6fbf8, #ffffff);
+}
+
+.cq-finish-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.cq-finish-title {
+  color: var(--ink);
+  font-size: 14.5px;
+  line-height: 1.4;
+  font-weight: 600;
+}
+
+.cq-finish-sub {
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+
+.cq-finish-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 599px) {
+  .cq-main {
+    padding: 24px 16px 48px;
+  }
+
+  .cq-title-xl {
+    font-size: 28px;
+  }
+
+  .cq-progress {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  .cq-time {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .cq-head {
+    gap: 12px;
+    padding: 16px;
+  }
+
+  .cq-target {
+    display: none;
+  }
+
+  .cq-body {
+    padding: 0 16px 16px;
+  }
+
+  /* components.css already sets 16px text on phones (no iOS zoom). */
+  .cq-body .input {
+    height: 46px;
+    font-size: 16px;
+  }
+
+  .cq-kbd {
+    display: none;
+  }
+
+  .cq-foot .btn {
+    height: 44px;
+  }
+
+  /* Number (28px) + gap (12px) + padding (16px): still under the answer. */
+  .cq-status {
+    margin-top: -8px;
+    padding: 0 16px 16px 56px;
+  }
+
+  .cq-finish {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .cq-finish-actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+
+  .cq-finish-actions .btn {
+    height: 48px;
+    font-size: 15px;
+  }
+}
+
+/*
+ * Reduced motion: base.css applies the design's rule (every animation and transition here,
+ * the card stagger included, shrinks to 1ms) and components.css keeps spinners turning slowly.
+ */

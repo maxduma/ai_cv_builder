@@ -1,0 +1,98 @@
+/* ---------- live preview (the editor's right column) ---------- */
+
+/* Sticks below the app header (61px) and the editor bar (56px), with 16px to spare. */
+.ed-preview {
+  position: sticky;
+  top: calc(133px + env(safe-area-inset-top, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.pv-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pv-title {
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.pv-meta {
+  color: var(--muted);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A dotted desk under the page. */
+.pv-stage {
+  padding: 18px;
+  border-radius: var(--r-xl);
+  background-color: #ececf1;
+  background-image: radial-gradient(circle at 1px 1px, rgba(17, 17, 26, 0.06) 1px, transparent 0);
+  background-size: 16px 16px;
+  box-shadow: inset 0 0 0 1px rgba(17, 17, 26, 0.05);
+}
+
+/* As tall as the window allows below the sticky top; a longer CV scrolls inside. */
+.pv-frame {
+  max-height: calc(100vh - 236px - env(safe-area-inset-top, 0px));
+  overflow: auto;
+  border-radius: 4px;
+  background: #fff;
+  box-shadow:
+    0 0 0 1px rgba(17, 17, 26, 0.06),
+    0 20px 40px -22px rgba(17, 17, 26, 0.4),
+    0 3px 8px -3px rgba(17, 17, 26, 0.1);
+  scrollbar-width: thin;
+}
+
+/*
+ * The page keeps its print width and is scaled to the column: (560 − 2 × 18) / 794. `zoom`, not
+ * `transform: scale`, so the frame's height and scrolling follow the scaled page.
+ */
+.pv-zoom {
+  width: 794px;
+  zoom: 0.6599;
+}
+
+.pv-fit {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.pv-fit svg {
+  display: block;
+  flex-shrink: 0;
+}
+
+.pv-fit.is-ok svg {
+  color: var(--success);
+}
+
+.pv-fit.is-warn {
+  color: var(--warning-ink);
+}
+
+/* A 440px column: (440 − 2 × 18) / 794. */
+@media (max-width: 1279px) {
+  .pv-zoom {
+    zoom: 0.5089;
+  }
+}
+
+@media (max-width: 1023px) {
+  .ed-preview {
+    display: none;
+  }
+}

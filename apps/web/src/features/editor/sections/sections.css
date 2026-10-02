@@ -1,0 +1,829 @@
+/* The editor's section cards (Contact, Summary, Experience, Education, Skills), ported from the
+   design's editor. Its drag-and-drop, hidden-section and AI rules are left out. */
+
+/* ---------- card shell ---------- */
+.ed-card {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+  box-shadow: var(--sh-sm);
+  /* Clear of the sticky header, editor bar and section tabs when a tab scrolls to the card. */
+  scroll-margin-top: calc(170px + env(safe-area-inset-top, 0px));
+  animation: cvb-rise 520ms var(--ease-out) backwards;
+  transition: border-color var(--dur-base) ease;
+}
+
+.ed-card:focus-within {
+  border-color: color-mix(in oklab, var(--accent) 26%, rgba(17, 17, 26, 0.08));
+}
+
+.ed-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 12px 12px 8px;
+}
+
+/* The design's drag handle slot: the padlock on Contact, blank elsewhere (nothing is dragged). */
+.grip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 32px;
+  border-radius: 7px;
+  color: #8d8d97;
+}
+
+.grip svg {
+  display: block;
+  pointer-events: none;
+}
+
+.grip.is-lock {
+  cursor: default;
+  color: #a1a1aa;
+}
+
+.ed-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-grow: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ed-toggle:hover {
+  background: rgba(17, 17, 26, 0.03);
+}
+
+.ed-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+
+.ed-title {
+  color: var(--ink);
+  font-size: 15.5px;
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  white-space: nowrap;
+}
+
+.ed-count {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ed-chev {
+  display: block;
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--faint);
+  transition: transform var(--dur-base) var(--ease-out);
+}
+
+.ed-toggle[aria-expanded='false'] .ed-chev {
+  transform: rotate(-90deg);
+}
+
+.ed-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px 20px 20px 40px;
+  animation: cvb-fade-up 260ms var(--ease-out) backwards;
+}
+
+/* ---------- fields: denser than the app's forms, as in the design ---------- */
+.ed-card .label {
+  font-size: 12.5px;
+}
+
+.label-opt {
+  margin-left: 1px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.ed-card .input {
+  height: 40px;
+  font-size: 14.5px;
+  transition:
+    box-shadow var(--dur-fast) ease,
+    background-color var(--dur-fast) ease;
+}
+
+.ed-card .input:disabled {
+  background: var(--subtle);
+  color: var(--faint);
+  box-shadow: 0 0 0 1px var(--line);
+  cursor: not-allowed;
+}
+
+.ed-card .textarea {
+  min-height: 120px;
+  padding: 11px 13px;
+  font-size: 14.5px;
+  line-height: 1.6;
+}
+
+/* A <select> that looks like the inputs next to it, with its own chevron. */
+.select {
+  width: 100%;
+  height: 40px;
+  padding: 0 30px 0 12px;
+  border: 0;
+  border-radius: var(--r-md);
+  outline: none;
+  background-color: var(--surface);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' fill='none' stroke='%238D8D97' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14.5px;
+  line-height: 1;
+  box-shadow:
+    0 0 0 1px var(--line-2),
+    var(--sh-xs);
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  transition:
+    box-shadow var(--dur-fast) ease,
+    background-color var(--dur-fast) ease;
+}
+
+.select:hover {
+  box-shadow:
+    0 0 0 1px var(--line-3),
+    var(--sh-xs);
+}
+
+.select:focus {
+  box-shadow:
+    0 0 0 1px var(--accent),
+    0 0 0 4px color-mix(in oklab, var(--accent) 18%, transparent);
+}
+
+.f-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 14px;
+}
+
+.f-grid3 {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+}
+
+.span2 {
+  grid-column: span 2;
+}
+
+.f-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+/* A checkbox drawn as a rounded box that fills with the accent. */
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--text-2);
+  font-size: 13.5px;
+  line-height: 1.3;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+}
+
+.check input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.check-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: 5px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1.5px var(--line-3);
+  color: #fff;
+  transition:
+    background-color var(--dur-fast) ease,
+    box-shadow var(--dur-fast) ease;
+}
+
+.check-box svg {
+  display: block;
+  opacity: 0;
+  transform: scale(0.6);
+  transition:
+    opacity var(--dur-fast) ease,
+    transform 260ms var(--ease-spring);
+}
+
+.check input:checked + .check-box {
+  background: var(--accent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 78%, #000);
+}
+
+.check input:checked + .check-box svg {
+  opacity: 1;
+  transform: none;
+}
+
+.check input:focus-visible + .check-box {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---------- contact links ---------- */
+.links {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.link-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 136px minmax(0, 1fr) 32px;
+  align-items: center;
+  gap: 8px;
+}
+
+/* "Add link", "Add achievement": a small accent text button. */
+.add-row {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: color-mix(in oklab, var(--accent) 86%, #000);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 550;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) ease;
+}
+
+.add-row:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--accent) 7%, transparent);
+}
+
+.add-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.add-row svg {
+  display: block;
+  flex-shrink: 0;
+}
+
+/* Not in the design: at a list's limit the add buttons grey out. */
+.add-row:disabled {
+  color: var(--faint);
+  cursor: not-allowed;
+}
+
+/* ---------- summary ---------- */
+.sum-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.words {
+  color: var(--muted);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.words.is-ok {
+  color: var(--success-ink);
+}
+
+.words.is-warn {
+  color: var(--warning-ink);
+}
+
+/* ---------- entries (experience, education) ---------- */
+.items {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.it {
+  position: relative;
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow:
+    0 0 0 1px var(--line-2),
+    var(--sh-xs);
+  transition: box-shadow var(--dur-base) ease;
+}
+
+.it.is-open {
+  box-shadow:
+    0 0 0 1px var(--line-2),
+    0 8px 20px -14px rgba(17, 17, 26, 0.28);
+}
+
+.it-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 6px 6px 4px;
+}
+
+.it-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-grow: 1;
+  min-width: 0;
+  min-height: 40px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.it-toggle:hover {
+  background: rgba(17, 17, 26, 0.03);
+}
+
+.it-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+
+.it-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.it-title {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.35;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.it-title.is-empty {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.it-meta {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.it-toggle .ed-chev {
+  margin-left: auto;
+}
+
+.it-toggle[aria-expanded='false'] .ed-chev {
+  transform: rotate(-90deg);
+}
+
+.it-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 6px 16px 16px 36px;
+  animation: cvb-fade-up 240ms var(--ease-out) backwards;
+}
+
+.add-entry {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 44px;
+  border: 1.5px dashed rgba(17, 17, 26, 0.16);
+  border-radius: var(--r-lg);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 550;
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) ease,
+    background-color var(--dur-fast) ease,
+    color var(--dur-fast) ease;
+}
+
+.add-entry:hover:not(:disabled) {
+  border-color: color-mix(in oklab, var(--accent) 50%, transparent);
+  background: color-mix(in oklab, var(--accent) 4%, transparent);
+  color: color-mix(in oklab, var(--accent) 86%, #000);
+}
+
+.add-entry:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.add-entry svg {
+  display: block;
+}
+
+/* Not in the design: at the limit of entries. */
+.add-entry:disabled {
+  color: var(--faint);
+  cursor: not-allowed;
+}
+
+/* ---------- an entry's ⋯ menu ---------- */
+.more-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+/* Over the backdrop that closes it. */
+.more-wrap.is-open {
+  z-index: 35;
+}
+
+.more-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--faint);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) ease,
+    color var(--dur-fast) ease,
+    box-shadow var(--dur-base) ease;
+}
+
+.more-btn:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.more-btn[aria-expanded='true'] {
+  background: #fff;
+  color: var(--ink);
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--accent) 50%, transparent),
+    0 0 0 4px color-mix(in oklab, var(--accent) 14%, transparent);
+}
+
+.more-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.more-btn svg {
+  display: block;
+}
+
+.menu-card {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 5;
+  width: 200px;
+  transform-origin: top right;
+}
+
+.menu-card .menu-item:disabled {
+  background: transparent;
+  color: var(--faint);
+  cursor: not-allowed;
+}
+
+.menu-card .menu-item:disabled .mi-icon {
+  color: #b5b5bf;
+}
+
+.menu-card .menu-item.is-danger,
+.menu-card .menu-item.is-danger .mi-icon {
+  color: var(--danger-ink);
+}
+
+.menu-card .menu-item.is-danger:is(:hover, :focus-visible) {
+  background: var(--danger-tint);
+}
+
+/* Under the open menu's wrapper (35), over the sticky bars of the editor (30 and below). */
+.menu-backdrop.for-menu {
+  z-index: 34;
+}
+
+/* ---------- achievements ---------- */
+.bl-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.bl-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The design's first column is a drag handle; without reordering the text starts at the edge. */
+.bl {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  align-items: start;
+  gap: 4px;
+  padding: 3px 0;
+  border-radius: 8px;
+}
+
+.bl-input {
+  display: block;
+  width: 100%;
+  min-height: 40px;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 9px;
+  outline: none;
+  background: #fbfbfc;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.55;
+  resize: none;
+  field-sizing: content;
+  box-shadow: 0 0 0 1px var(--line);
+  transition:
+    box-shadow var(--dur-fast) ease,
+    background-color var(--dur-fast) ease;
+}
+
+.bl-input::placeholder {
+  color: #75757f;
+}
+
+.bl-input:hover {
+  background: #fff;
+  box-shadow: 0 0 0 1px var(--line-3);
+}
+
+.bl-input:focus {
+  background: #fff;
+  box-shadow:
+    0 0 0 1px var(--accent),
+    0 0 0 4px color-mix(in oklab, var(--accent) 16%, transparent);
+}
+
+.bl .icon-btn {
+  margin-top: 4px;
+  opacity: 0.7;
+}
+
+.bl:hover .icon-btn,
+.bl:focus-within .icon-btn {
+  opacity: 1;
+}
+
+/* ---------- skills ---------- */
+.skill-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.skill-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  height: 32px;
+  padding: 0 4px 0 12px;
+  border-radius: 999px;
+  background: var(--subtle);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--text-2);
+  font-size: 13.5px;
+  font-weight: 550;
+  transition:
+    background-color var(--dur-fast) ease,
+    box-shadow var(--dur-fast) ease;
+}
+
+.skill-chip:hover {
+  background: #ececf1;
+}
+
+.skill-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skill-x {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--faint);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) ease,
+    color var(--dur-fast) ease;
+}
+
+.skill-x:hover {
+  background: rgba(17, 17, 26, 0.08);
+  color: var(--ink);
+}
+
+.skill-x:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+
+.skill-x svg {
+  display: block;
+}
+
+.skill-add {
+  display: flex;
+  gap: 8px;
+}
+
+.skill-add .input {
+  flex: 1;
+}
+
+@media (hover: none) {
+  /* No hover to reveal them: the remove buttons of achievements are always fully visible. */
+  .bl .icon-btn {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 599px) {
+  .ed-head {
+    padding: 8px 8px 8px 4px;
+  }
+
+  .ed-body {
+    padding: 2px 14px 16px;
+  }
+
+  .grip {
+    width: 28px;
+    height: 44px;
+  }
+
+  .f-grid,
+  .f-grid3 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .span2 {
+    grid-column: auto;
+  }
+
+  .link-row {
+    grid-template-columns: 112px minmax(0, 1fr) 40px;
+  }
+
+  .it-body {
+    padding: 4px 12px 14px;
+  }
+
+  /* 16px text stops iOS from zooming into fields. */
+  .ed-card .input,
+  .ed-card .textarea,
+  .select,
+  .bl-input {
+    font-size: 16px;
+  }
+
+  /* Touch targets. */
+  .ed-card .input,
+  .select {
+    height: 44px;
+  }
+
+  .ed-toggle {
+    height: 44px;
+  }
+
+  .it-toggle {
+    min-height: 44px;
+  }
+
+  .more-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .add-row {
+    height: 44px;
+  }
+
+  .check {
+    min-height: 44px;
+  }
+
+  .bl {
+    grid-template-columns: minmax(0, 1fr) 40px;
+  }
+
+  .skill-chip {
+    height: 44px;
+    padding-left: 14px;
+  }
+
+  .skill-x {
+    position: relative;
+    width: 36px;
+    height: 36px;
+  }
+
+  /* A larger hit area than the visible circle. */
+  .skill-x::before {
+    content: '';
+    position: absolute;
+    inset: -4px;
+  }
+
+  .skill-add .btn {
+    height: 44px;
+  }
+}
