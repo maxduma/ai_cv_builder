@@ -1,6 +1,7 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import { type CvContent, GENERATION_STEP_COUNT } from '@cv-builder/shared';
 import { type CvGenerator, GenerationError } from './cv-generator';
+import { JOB_FAILURES } from './generation.failures';
 import type { GenerationInput } from './generation.input';
 
 interface Options {
@@ -15,8 +16,9 @@ interface Options {
 const FAILING_STEP = 2;
 
 /**
- * Stand-in for the Claude generator until it is wired up: it walks through the real steps and
- * returns clearly labelled sample content built from the target role.
+ * The development stand-in for the Claude generator, used when `ANTHROPIC_API_KEY` is not set
+ * (production requires the key). It walks through the real steps and returns clearly labelled
+ * sample content built from the target role.
  */
 export function createMockCvGenerator({
   stepMs,
@@ -31,10 +33,10 @@ export function createMockCvGenerator({
         await onStep(step);
         await sleep(stepMs, undefined, { signal });
         if (fails && step === FAILING_STEP) {
-          throw new GenerationError('AI_TIMEOUT', 'The AI service didn’t respond in time.');
+          throw new GenerationError(JOB_FAILURES.aiTimeout);
         }
       }
-      return sampleContent(input);
+      return { content: sampleContent(input), issues: [] };
     },
   };
 }
@@ -51,7 +53,7 @@ function sampleContent(input: GenerationInput): CvContent {
       location: '',
       links: [],
     },
-    summary: `Sample content for a ${input.targetRole} CV. AI generation isn’t connected yet, so this draft was written by a placeholder.`,
+    summary: `Sample content for a ${input.targetRole} CV. This draft was written by the development mock because no Anthropic API key is set.`,
     experience: [
       {
         id: 'experience-1',

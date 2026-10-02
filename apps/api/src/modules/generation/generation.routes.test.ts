@@ -1,8 +1,49 @@
-import type { ApiErrorBody, CvDetail, GenerationJobDto } from '@cv-builder/shared';
+import {
+  type ApiErrorBody,
+  CvContentSchema,
+  type CvDetail,
+  type GenerationIssue,
+  type GenerationJobDto,
+} from '@cv-builder/shared';
+import pino from 'pino';
 import { describe, expect, it } from 'vitest';
-import { sendJson, startApp, TEST_USER_HEADER, USER_B } from '../../test/start-app';
+import {
+  sendJson,
+  startApp,
+  startAppWithTwoAccounts,
+  TEST_USER_HEADER,
+  USER_B,
+} from '../../test/start-app';
+import { createGenerationWorker } from './generation.worker';
 
 const NOTES = 'Six years building payment APIs in Go; led a team of four engineers.';
+
+const CONTENT = CvContentSchema.parse({
+  version: 1,
+  contact: {
+    firstName: 'Alex',
+    lastName: 'Morgan',
+    headline: 'Backend Engineer',
+    email: '',
+    phone: '',
+    location: '',
+    links: [],
+  },
+  summary: 'Builds payment APIs in Go and leads a team of four engineers.',
+  experience: [],
+  education: [],
+  skills: [],
+});
+
+const ISSUES: GenerationIssue[] = [
+  {
+    section: 'contact',
+    kind: 'missing',
+    target: 'Contact details',
+    question: 'What email address should recruiters use?',
+    why: 'Without one, recruiters have no way to reach you.',
+  },
+];
 
 async function setup(body: unknown = { targetRole: 'Senior Backend Engineer', sourceText: NOTES }) {
   const app = await startApp();
@@ -22,7 +63,13 @@ describe('POST /api/cvs/:cvId/generations', () => {
 
     expect(response.status).toBe(202);
     expect(response.headers.get('location')).toBe(`/api/generation-jobs/${job.id}`);
-    expect(job).toMatchObject({ cvId: cv.id, status: 'QUEUED', step: 0, errorCode: null });
+    expect(job).toMatchObject({
+      cvId: cv.id,
+      status: 'PENDING',
+      step: 0,
+      errorCode: null,
+      issues: [],
+    });
     expect(db.jobs[0]?.input).toEqual({
       targetRole: 'Senior Backend Engineer',
       sourceText: NOTES,
@@ -99,7 +146,72 @@ describe('GET /api/generation-jobs/:jobId', () => {
     });
 
     expect(mine.status).toBe(200);
-    expect(await mine.json()).toMatchObject({ id: job.id, status: 'QUEUED' });
+    expect(await mine.json()).toMatchObject({ id: job.id, status: 'PENDING' });
+    expect(theirs.status).toBe(404);
+  });
+
+  it('includes what the AI found missing once the job has completed', async () => {
+    const { start, baseUrl, repositories } = await setup();
+    const job = (await (await start()).json()) as GenerationJobDto;
+    const worker = createGenerationWorker({
+      repository: repositories.generation,
+      generator: {
+        async generate() {
+          return { content: CONTENT, issues: ISSUES };
+        },
+      },
+      logger: pino({ level: 'silent' }),
+    });
+
+    await worker.tick();
+    const response = await fetch(`${baseUrl}/api/generation-jobs/${job.id}`);
+
+    expect(await response.json()).toMatchObject({
+      id: job.id,
+      status: 'COMPLETED',
+      step: 4,
+      errorCode: null,
+      issues: ISSUES,
+    });
+  });
+});
+
+describe('ownership with session cookies', () => {
+  async function setupAccounts() {
+    const app = await startAppWithTwoAccounts();
+    const created = await sendJson(
+      `${app.baseUrl}/api/cvs`,
+      'POST',
+      { targetRole: 'Senior Backend Engineer', sourceText: NOTES },
+      { cookie: app.owner.cookie },
+    );
+    const cv = (await created.json()) as CvDetail;
+    const start = (cookie: string) =>
+      fetch(`${app.baseUrl}/api/cvs/${cv.id}/generations`, { method: 'POST', headers: { cookie } });
+    return { ...app, start };
+  }
+
+  it("can't start a generation for another account's CV", async () => {
+    const { start, other, db } = await setupAccounts();
+
+    const response = await start(other.cookie);
+
+    expect(response.status).toBe(404);
+    expect(db.jobs).toHaveLength(0);
+  });
+
+  it("can't read another account's generation", async () => {
+    const { start, owner, other, baseUrl } = await setupAccounts();
+    const job = (await (await start(owner.cookie)).json()) as GenerationJobDto;
+
+    const mine = await fetch(`${baseUrl}/api/generation-jobs/${job.id}`, {
+      headers: { cookie: owner.cookie },
+    });
+    const theirs = await fetch(`${baseUrl}/api/generation-jobs/${job.id}`, {
+      headers: { cookie: other.cookie },
+    });
+
+    expect(mine.status).toBe(200);
     expect(theirs.status).toBe(404);
   });
 });

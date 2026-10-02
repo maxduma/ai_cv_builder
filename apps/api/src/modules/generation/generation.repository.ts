@@ -1,6 +1,7 @@
-import { type CvContent, GENERATION_STEP_COUNT } from '@cv-builder/shared';
+import { type CvContent, GENERATION_STEP_COUNT, type GenerationIssue } from '@cv-builder/shared';
 import type { PrismaClient } from '../../db/prisma';
 import type { Prisma } from '../../generated/prisma/client';
+import { JOB_FAILURES } from './generation.failures';
 import type { GenerationInput } from './generation.input';
 
 export const generationJobColumns = {
@@ -10,6 +11,7 @@ export const generationJobColumns = {
   progressStep: true,
   errorCode: true,
   errorMessage: true,
+  issues: true,
   createdAt: true,
   startedAt: true,
   finishedAt: true,
@@ -37,8 +39,9 @@ export type StartJobResult =
   | { kind: 'created'; job: GenerationJobRecord };
 
 /**
- * A worker's claim on a RUNNING job. It holds while the job is RUNNING with the same attempt count:
- * if the job went stale and was claimed again, every write made with the old lease is ignored.
+ * A worker's claim on a PROCESSING job. It holds while the job is PROCESSING with the same attempt
+ * count: if the job went stale and was claimed again, every write made with the old lease is
+ * ignored.
  */
 export interface JobLease {
   jobId: string;
@@ -52,22 +55,18 @@ export interface ClaimedJob extends JobLease {
   input: unknown;
 }
 
+/** Why a job failed (see `JOB_FAILURES`). */
 export interface JobFailure {
   code: string;
   /** Shown to the user. */
   message: string;
 }
 
-const WORKER_LOST: JobFailure = {
-  code: 'WORKER_LOST',
-  message: 'Generation stopped unexpectedly. Your details are saved, so you can try again.',
-};
-
 /** Data access for generation jobs: Postgres is the queue (see README, "CV generation"). */
 export function createGenerationRepository(prisma: PrismaClient) {
   const held = (lease: JobLease) => ({
     id: lease.jobId,
-    status: 'RUNNING' as const,
+    status: 'PROCESSING' as const,
     attempts: lease.attempts,
   });
 
@@ -95,7 +94,7 @@ export function createGenerationRepository(prisma: PrismaClient) {
         if (locked.length === 0) return { kind: 'not_found' } as const;
 
         const active = await tx.generationJob.findFirst({
-          where: { cvId, userId, status: { in: ['QUEUED', 'RUNNING'] } },
+          where: { cvId, userId, status: { in: ['PENDING', 'PROCESSING'] } },
           select: { id: true },
         });
         if (active) return { kind: 'busy', jobId: active.id } as const;
@@ -127,35 +126,35 @@ export function createGenerationRepository(prisma: PrismaClient) {
     },
 
     /**
-     * Puts RUNNING jobs whose worker stopped sending heartbeats back in the queue, or fails them
+     * Puts PROCESSING jobs whose worker stopped sending heartbeats back in the queue, or fails them
      * once they have used up their attempts.
      */
     async recoverStale(staleBefore: Date, maxAttempts: number) {
       const stale = {
-        status: 'RUNNING' as const,
+        status: 'PROCESSING' as const,
         OR: [{ heartbeatAt: { lt: staleBefore } }, { heartbeatAt: null }],
       };
       const failed = await prisma.generationJob.updateMany({
         where: { ...stale, attempts: { gte: maxAttempts } },
         data: {
           status: 'FAILED',
-          errorCode: WORKER_LOST.code,
-          errorMessage: WORKER_LOST.message,
+          errorCode: JOB_FAILURES.workerLost.code,
+          errorMessage: JOB_FAILURES.workerLost.message,
           finishedAt: new Date(),
         },
       });
       const requeued = await prisma.generationJob.updateMany({
         where: stale,
-        data: { status: 'QUEUED', heartbeatAt: null, progressStep: 0 },
+        data: { status: 'PENDING', heartbeatAt: null, progressStep: 0 },
       });
       return { requeued: requeued.count, failed: failed.count };
     },
 
-    /** Claims the oldest queued job. Concurrent workers skip rows another worker has locked. */
+    /** Claims the oldest pending job. Concurrent workers skip rows another worker has locked. */
     claimNext(): Promise<ClaimedJob | null> {
       return prisma.$transaction(async (tx) => {
         const [next] = await tx.$queryRaw<{ id: string }[]>`
-          SELECT id FROM generation_jobs WHERE status = 'QUEUED'
+          SELECT id FROM generation_jobs WHERE status = 'PENDING'
           ORDER BY created_at, id LIMIT 1 FOR UPDATE SKIP LOCKED`;
         if (!next) return null;
 
@@ -163,7 +162,7 @@ export function createGenerationRepository(prisma: PrismaClient) {
         const job = await tx.generationJob.update({
           where: { id: next.id },
           data: {
-            status: 'RUNNING',
+            status: 'PROCESSING',
             attempts: { increment: 1 },
             progressStep: 0,
             startedAt: now,
@@ -190,15 +189,19 @@ export function createGenerationRepository(prisma: PrismaClient) {
       return count === 1;
     },
 
-    /** Saves the validated result on the job and as the CV's content, in one transaction. */
-    succeed(lease: JobLease, content: CvContent): Promise<boolean> {
+    /**
+     * Completes the job with its validated result and issues, and saves the result as the CV's
+     * content, in one transaction.
+     */
+    succeed(lease: JobLease, content: CvContent, issues: GenerationIssue[]): Promise<boolean> {
       return prisma.$transaction(async (tx) => {
         const now = new Date();
         const { count } = await tx.generationJob.updateMany({
           where: held(lease),
           data: {
-            status: 'SUCCEEDED',
+            status: 'COMPLETED',
             result: content,
+            issues,
             progressStep: GENERATION_STEP_COUNT,
             heartbeatAt: now,
             finishedAt: now,
@@ -236,7 +239,7 @@ export function createGenerationRepository(prisma: PrismaClient) {
       const { count } = await prisma.generationJob.updateMany({
         where: held(lease),
         data: {
-          status: 'QUEUED',
+          status: 'PENDING',
           attempts: { decrement: 1 },
           progressStep: 0,
           startedAt: null,

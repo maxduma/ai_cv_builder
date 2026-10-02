@@ -1,4 +1,5 @@
-import { isRouteErrorResponse, Link, useRouteError } from 'react-router';
+import { isRouteErrorResponse, Link, Navigate, useRouteError } from 'react-router';
+import { ApiError } from '../lib/api-client';
 import { NotFoundPage } from '../pages/NotFoundPage';
 import { AlertCircleIcon, ArrowLeftIcon } from '../ui/icons';
 import { StateIcon, StatePanel } from '../ui/StatePanel';
@@ -9,6 +10,10 @@ export function RouteError() {
   const error = useRouteError();
   const status = isRouteErrorResponse(error) ? error.status : undefined;
 
+  // A page rethrew a 401: the session has ended, so the way on is logging in, not "Error 401".
+  if (error instanceof ApiError && error.status === 401) {
+    return <Navigate to="/login" replace />;
+  }
   if (status === 404) {
     return <NotFoundPage />;
   }

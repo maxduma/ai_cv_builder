@@ -5,7 +5,7 @@ import { sourceDocumentColumns } from '../source-documents/source-documents.repo
 
 const latestFirst = { createdAt: 'desc' } as const;
 
-// Explicit column lists: `content` is never loaded by these queries (it can be large).
+// Explicit column lists. Only a single CV loads its `content`; lists never do (it can be large).
 const summaryColumns = {
   id: true,
   title: true,
@@ -19,6 +19,7 @@ const summaryColumns = {
 const detailColumns = {
   ...summaryColumns,
   sourceText: true,
+  content: true,
   sourceDocuments: { orderBy: latestFirst, take: 1, select: sourceDocumentColumns },
   generationJobs: { orderBy: latestFirst, take: 1, select: generationJobColumns },
 } satisfies Prisma.CvSelect;

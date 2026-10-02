@@ -37,6 +37,38 @@
   flex-shrink: 0;
 }
 
+/* Disabled buttons turn grey; a busy one (aria-busy) keeps its colour while it works. */
+.btn:disabled {
+  cursor: default;
+}
+
+.btn:disabled:not([aria-busy='true']),
+.btn[aria-disabled='true'] {
+  cursor: not-allowed;
+  transform: none;
+  filter: none;
+}
+
+.btn-primary:disabled:not([aria-busy='true']),
+.btn-primary[aria-disabled='true'] {
+  background: #e7e7ec;
+  color: #8d8d97;
+  box-shadow: inset 0 0 0 1px rgba(17, 17, 26, 0.06);
+}
+
+.btn-secondary:disabled:not([aria-busy='true']),
+.btn-secondary[aria-disabled='true'] {
+  background: var(--subtle);
+  color: #8d8d97;
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+.btn-ghost:disabled,
+.btn-ghost[aria-disabled='true'] {
+  background: transparent;
+  color: #8d8d97;
+}
+
 .btn-lg {
   height: 44px;
   font-size: 14.5px;
@@ -102,6 +134,10 @@
   transform: scale(0.98);
 }
 
+.btn-secondary:disabled {
+  color: var(--muted);
+}
+
 .btn-ghost {
   background: transparent;
   color: var(--text-2);
@@ -127,12 +163,43 @@
   animation: cvb-spin 700ms linear infinite;
 }
 
+/* ---------- links ---------- */
+.link {
+  border-radius: 4px;
+  color: color-mix(in oklab, var(--accent) 88%, #000);
+  font-weight: 550;
+  text-decoration: none;
+  transition: color var(--dur-fast) ease;
+}
+
+.link:hover {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.link-sm {
+  font-size: 13px;
+}
+
 /* ---------- fields ---------- */
 .field {
   display: flex;
   flex-direction: column;
   gap: 6px;
   min-width: 0;
+}
+
+.label {
+  color: var(--text-2);
+  font-size: 13.5px;
+  line-height: 1.3;
+  font-weight: 550;
 }
 
 .control {
@@ -254,6 +321,13 @@
   display: block;
 }
 
+.hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
 .error {
   display: flex;
   align-items: flex-start;
@@ -272,12 +346,98 @@
   margin-top: 2px;
 }
 
+/* Password strength: four segments and a label. */
+.pw-meter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 16px;
+}
+
+.meter {
+  display: grid;
+  flex-grow: 1;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.meter-seg {
+  display: block;
+  height: 4px;
+  border-radius: 999px;
+  background: #e8e8ec;
+  transition: background-color 260ms ease;
+}
+
+.meter-label {
+  min-width: 44px;
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 600;
+  text-align: right;
+}
+
 @media (max-width: 599px) {
   /* 16px text stops iOS from zooming into fields. */
   .input,
   .textarea {
     font-size: 16px;
   }
+}
+
+/* ---------- alerts ---------- */
+.alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border-radius: var(--r-lg);
+  background: var(--danger-tint);
+  box-shadow: inset 0 0 0 1px rgba(217, 45, 32, 0.18);
+}
+
+.alert svg {
+  display: block;
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--danger-ink);
+}
+
+.alert-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.alert-title {
+  margin: 0;
+  color: var(--danger-ink);
+  font-size: 14px;
+  line-height: 1.4;
+  font-weight: 600;
+}
+
+.alert-text {
+  margin: 2px 0 0;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* A short alert inside the panel that ran the task. */
+.alert.is-inline {
+  align-items: center;
+  padding: 10px 10px 10px 12px;
+  border-radius: var(--r-md);
+}
+
+.alert.is-inline .alert-text {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  color: var(--danger-ink);
+  font-size: 13.5px;
+  line-height: 1.45;
+  font-weight: 500;
 }
 
 /* ---------- status chips ---------- */

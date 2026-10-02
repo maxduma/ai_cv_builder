@@ -1,7 +1,8 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-import { CvContentSchema } from '@cv-builder/shared';
+import { CvContentSchema, type GenerationIssue, GenerationIssuesSchema } from '@cv-builder/shared';
 import type { Logger } from '../../lib/logger';
 import { type CvGenerator, GenerationError } from './cv-generator';
+import { JOB_FAILURES } from './generation.failures';
 import { GenerationInputSchema } from './generation.input';
 import type {
   ClaimedJob,
@@ -19,10 +20,20 @@ interface Options {
   repository: GenerationWorkerRepository;
   generator: CvGenerator;
   logger: Logger;
+  /**
+   * How many jobs run at the same time, each in its own loop. A CV takes Claude a minute or more,
+   * so one at a time would keep every other user waiting in line.
+   */
+  concurrency?: number;
+  /**
+   * Deadline for one job, the generator's own retries included. Past it the job fails with
+   * `AI_TIMEOUT`, even if the generator ignores its abort signal.
+   */
+  jobTimeoutMs?: number;
   /** Wait between queue checks while there is nothing to do. */
   pollIntervalMs?: number;
   heartbeatIntervalMs?: number;
-  /** A RUNNING job without a heartbeat for this long is considered abandoned. */
+  /** A PROCESSING job without a heartbeat for this long is considered abandoned. */
   staleAfterMs?: number;
   maxAttempts?: number;
 }
@@ -32,29 +43,38 @@ class LeaseLostError extends Error {
   override name = 'LeaseLostError';
 }
 
-const FAILURES = {
-  invalidInput: {
-    code: 'INVALID_INPUT',
-    message: 'The saved details for this CV couldn’t be read. Edit them and try again.',
-  },
-  invalidOutput: {
-    code: 'INVALID_OUTPUT',
-    message: 'The AI returned a CV we couldn’t use. Try again.',
-  },
-  unexpected: {
-    code: 'INTERNAL_ERROR',
-    message: 'Something went wrong while writing your CV. Try again.',
-  },
-} satisfies Record<string, JobFailure>;
+/**
+ * Settles like `work`, or rejects with the abort reason as soon as `signal` aborts, so a generator
+ * that ignores its signal can't hold on to a job (and a worker loop) forever.
+ */
+function abortable<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    if (signal.aborted) abort();
+    else signal.addEventListener('abort', abort, { once: true });
+    work.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+  });
+}
+
+/** The issues only advise the user, so an invalid list is dropped rather than failing the CV. */
+function validIssues(issues: unknown, log: Logger): GenerationIssue[] {
+  const parsed = GenerationIssuesSchema.safeParse(issues);
+  if (parsed.success) return parsed.data;
+  log.warn({ err: parsed.error }, 'The generated issues were invalid; saving the CV without them');
+  return [];
+}
 
 /**
- * Runs queued generation jobs inside the API process, one at a time. Nothing depends on the
- * browser: the job's state lives in PostgreSQL, and a job whose worker died is picked up again.
+ * Runs pending generation jobs inside the API process, `concurrency` at a time. Nothing depends
+ * on the browser: the job's state lives in PostgreSQL, and a job whose worker died is picked up
+ * again.
  */
 export function createGenerationWorker({
   repository,
   generator,
   logger,
+  concurrency = 3,
+  jobTimeoutMs = 240_000,
   pollIntervalMs = 1_000,
   heartbeatIntervalMs = 5_000,
   staleAfterMs = 30_000,
@@ -62,9 +82,10 @@ export function createGenerationWorker({
 }: Options) {
   let running = false;
   let stopping = false;
-  let loop: Promise<void> | undefined;
-  let currentJob: AbortController | undefined;
-  let idleWait: AbortController | undefined;
+  let loops: Promise<void>[] = [];
+  // What `stop()` interrupts: the jobs in progress and the loops waiting for work.
+  const jobs = new Set<AbortController>();
+  const idleWaits = new Set<AbortController>();
 
   async function recordFailure(lease: JobLease, failure: JobFailure, log: Logger, cause: unknown) {
     const recorded = await repository.fail(lease, failure);
@@ -81,8 +102,12 @@ export function createGenerationWorker({
       return;
     }
 
+    // The generator is stopped by the worker (shutdown, a lost lease) or by the job's deadline;
+    // which of them fired decides what happens to the job (see the catch below).
     const controller = new AbortController();
-    currentJob = controller;
+    const deadline = AbortSignal.timeout(jobTimeoutMs);
+    const signal = AbortSignal.any([controller.signal, deadline]);
+    jobs.add(controller);
     const heartbeat = setInterval(() => {
       repository.heartbeat(lease).then(
         (held) => {
@@ -96,26 +121,31 @@ export function createGenerationWorker({
       // The input was validated when the job was created, but it comes back from the database.
       const input = GenerationInputSchema.safeParse(job.input);
       if (!input.success) {
-        await recordFailure(lease, FAILURES.invalidInput, log, input.error);
+        await recordFailure(lease, JOB_FAILURES.invalidInput, log, input.error);
         return;
       }
 
-      const output = await generator.generate(input.data, {
-        signal: controller.signal,
-        onStep: async (step) => {
-          if (!(await repository.heartbeat(lease, step))) throw new LeaseLostError();
-        },
-      });
+      const output = await abortable(
+        generator.generate(input.data, {
+          signal,
+          log,
+          onStep: async (step) => {
+            if (!(await repository.heartbeat(lease, step))) throw new LeaseLostError();
+          },
+        }),
+        signal,
+      );
 
       // Generated content is never trusted: it must match the CV content schema.
-      const content = CvContentSchema.safeParse(output);
+      const content = CvContentSchema.safeParse(output.content);
       if (!content.success) {
-        await recordFailure(lease, FAILURES.invalidOutput, log, content.error);
+        await recordFailure(lease, JOB_FAILURES.invalidOutput, log, content.error);
         return;
       }
+      const issues = validIssues(output.issues, log);
 
-      if (await repository.succeed(lease, content.data)) {
-        log.info('Generation succeeded');
+      if (await repository.succeed(lease, content.data, issues)) {
+        log.info({ issues: issues.length }, 'Generation completed');
       } else {
         log.warn('Lost the job before its result could be saved');
       }
@@ -125,18 +155,20 @@ export function createGenerationWorker({
       } else if (controller.signal.aborted && stopping) {
         await repository.release(lease);
         log.info('Interrupted by shutdown; job returned to the queue');
+      } else if (deadline.aborted) {
+        await recordFailure(lease, JOB_FAILURES.aiTimeout, log, error);
       } else if (error instanceof GenerationError) {
         await recordFailure(lease, { code: error.code, message: error.userMessage }, log, error);
       } else {
-        await recordFailure(lease, FAILURES.unexpected, log, error);
+        await recordFailure(lease, JOB_FAILURES.internal, log, error);
       }
     } finally {
       clearInterval(heartbeat);
-      currentJob = undefined;
+      jobs.delete(controller);
     }
   }
 
-  /** One round: recover abandoned jobs, then run the oldest queued one. True if there was work. */
+  /** One round: recover abandoned jobs, then run the oldest pending one. True if there was work. */
   async function tick(): Promise<boolean> {
     const recovered = await repository.recoverStale(
       new Date(Date.now() - staleAfterMs),
@@ -152,6 +184,7 @@ export function createGenerationWorker({
     return true;
   }
 
+  /** One of the `concurrency` loops; they share nothing but the queue. */
   async function run() {
     while (running) {
       let foundWork = false;
@@ -161,9 +194,10 @@ export function createGenerationWorker({
         logger.error({ err: error }, 'Generation worker round failed');
       }
       if (!foundWork && running) {
-        idleWait = new AbortController();
+        const idleWait = new AbortController();
+        idleWaits.add(idleWait);
         await sleep(pollIntervalMs, undefined, { signal: idleWait.signal }).catch(() => {});
-        idleWait = undefined;
+        idleWaits.delete(idleWait);
       }
     }
   }
@@ -173,16 +207,16 @@ export function createGenerationWorker({
       if (running) return;
       running = true;
       stopping = false;
-      loop = run();
+      loops = Array.from({ length: concurrency }, () => run());
     },
 
-    /** Stops the worker. A job in progress is interrupted and returned to the queue. */
+    /** Stops the worker. Jobs in progress are interrupted and returned to the queue. */
     async stop() {
       running = false;
       stopping = true;
-      currentJob?.abort();
-      idleWait?.abort();
-      await loop;
+      for (const job of jobs) job.abort();
+      for (const idleWait of idleWaits) idleWait.abort();
+      await Promise.all(loops);
     },
 
     tick,

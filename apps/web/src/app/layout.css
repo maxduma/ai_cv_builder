@@ -98,6 +98,220 @@
   outline-offset: 2px;
 }
 
+/* ---------- account menu ---------- */
+.user-wrap {
+  position: relative;
+  margin-left: auto;
+}
+
+.user-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 10px 0 5px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) ease;
+}
+
+.user-btn:hover,
+.user-btn[aria-expanded='true'] {
+  background: rgba(17, 17, 26, 0.05);
+}
+
+.user-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Long names are cut short in the header; the menu shows them in full. */
+.user-name {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-chev {
+  display: block;
+  flex-shrink: 0;
+  color: var(--faint);
+  transition: transform var(--dur-base) var(--ease-out);
+}
+
+.user-btn[aria-expanded='true'] .user-chev {
+  transform: rotate(180deg);
+}
+
+.avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: linear-gradient(
+    140deg,
+    color-mix(in oklab, var(--accent) 24%, #fff),
+    color-mix(in oklab, var(--accent) 10%, #fff)
+  );
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 18%, transparent);
+  color: color-mix(in oklab, var(--accent) 78%, #000);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.avatar-lg {
+  width: 36px;
+  height: 36px;
+  font-size: 13px;
+}
+
+.menu {
+  display: flex;
+  flex-direction: column;
+  padding: 5px;
+  background: rgba(255, 255, 255, 0.96);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-lg);
+  animation: cvb-menu-in 190ms var(--ease-menu) both;
+}
+
+.menu-user {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 5;
+  width: 248px;
+  transform-origin: top right;
+}
+
+.um-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 8px 6px;
+}
+
+.um-id {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.um-name {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.um-mail {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menu-sep {
+  display: block;
+  height: 1px;
+  margin: 5px -5px;
+  background: rgba(17, 17, 26, 0.07);
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 34px;
+  padding: 0 6px 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #26262c;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+  animation: cvb-item-in 260ms var(--ease-out) both;
+}
+
+.menu-item:is(:hover, :focus-visible) {
+  background: var(--hover);
+}
+
+.menu-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.mi-icon {
+  display: block;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+/* Not in the design: a failed action explains itself under its item. */
+.menu-error {
+  padding: 4px 6px 4px 10px;
+}
+
+/* Catches clicks outside an open menu. Under the header (z-index 40), over the page. */
+.menu-backdrop {
+  position: fixed;
+  inset: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: default;
+}
+
+.menu-backdrop.for-user {
+  z-index: 39;
+}
+
+@keyframes cvb-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes cvb-item-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 /* ---------- page frame ---------- */
 .page-main {
   max-width: 1184px;
@@ -190,6 +404,25 @@
     height: 56px;
     padding: 0 16px;
     gap: 16px;
+  }
+
+  /* The avatar alone; the menu still shows the name. */
+  .user-name {
+    display: none;
+  }
+
+  .user-btn {
+    height: 44px;
+    padding: 0 8px 0 6px;
+  }
+
+  .menu-item {
+    min-height: 44px;
+    font-size: 15px;
+  }
+
+  .menu-user {
+    width: min(280px, calc(100vw - 32px));
   }
 
   .page-main {

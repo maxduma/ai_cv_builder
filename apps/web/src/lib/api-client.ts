@@ -20,6 +20,26 @@ export class ApiError extends Error {
 const networkError = () =>
   new ApiError(0, 'NETWORK_ERROR', 'Cannot reach the server. Check your connection.');
 
+let onUnauthorized: (() => void) | null = null;
+
+/**
+ * Sets what happens when the API refuses a request because there is no valid session (it has
+ * expired, or the user logged out in another tab). Registered once, at start-up.
+ */
+export function setUnauthorizedHandler(handler: () => void) {
+  onUnauthorized = handler;
+}
+
+/**
+ * Only `UNAUTHORIZED` outside `/auth/*` means the session has ended: a wrong password is
+ * `INVALID_CREDENTIALS`, and the session check (`/auth/me`) handles its own 401.
+ */
+function reportIfSessionEnded(path: string, error: ApiError) {
+  if (error.status === 401 && error.code === 'UNAUTHORIZED' && !path.startsWith('/auth/')) {
+    onUnauthorized?.();
+  }
+}
+
 /** Turns a non-2xx response into an `ApiError`, using the API's error body when there is one. */
 function toApiError(status: number, payload: unknown): ApiError {
   if (isApiErrorBody(payload)) {
@@ -65,7 +85,9 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 
   const payload = parseJson(await response.text());
   if (!response.ok) {
-    throw toApiError(response.status, payload);
+    const error = toApiError(response.status, payload);
+    reportIfSessionEnded(path, error);
+    throw error;
   }
   return payload as T;
 }
@@ -110,8 +132,13 @@ function upload<T>(method: string, path: string, file: File, options: UploadOpti
     xhr.upload.onload = () => onSent?.();
     xhr.onload = () => {
       const payload = parseJson(xhr.responseText);
-      if (xhr.status >= 200 && xhr.status < 300) resolve(payload as T);
-      else reject(toApiError(xhr.status, payload));
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(payload as T);
+        return;
+      }
+      const error = toApiError(xhr.status, payload);
+      reportIfSessionEnded(path, error);
+      reject(error);
     };
     xhr.onerror = () => reject(networkError());
     xhr.onabort = () => reject(new DOMException('Upload cancelled', 'AbortError'));

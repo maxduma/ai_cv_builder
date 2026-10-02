@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { CvContent } from './cv-content';
 import type { GenerationJobDto } from './generation-job';
 import type { SourceDocumentDto } from './source-document';
 
@@ -51,7 +52,7 @@ export const CvIdParamsSchema = z.object({
 
 /**
  * Where a CV is in its life cycle, derived from its latest generation job:
- * no job yet → `draft`, QUEUED/RUNNING → `generating`, FAILED → `failed`, SUCCEEDED → `ready`.
+ * no job yet → `draft`, PENDING/PROCESSING → `generating`, FAILED → `failed`, COMPLETED → `ready`.
  */
 export type CvStatus = 'draft' | 'generating' | 'failed' | 'ready';
 
@@ -68,6 +69,8 @@ export interface CvDetail extends CvSummary {
   sourceText: string | null;
   sourceDocument: SourceDocumentDto | null;
   latestGeneration: GenerationJobDto | null;
+  /** The structured CV, once a generation has completed; validated before it was stored. */
+  content: CvContent | null;
 }
 
 export interface CvListResponse {

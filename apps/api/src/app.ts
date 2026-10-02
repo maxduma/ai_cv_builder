@@ -11,12 +11,20 @@ import { createApiRouter } from './http/router';
 import type { PdfTextExtractor } from './integrations/extraction/pdf-text-extractor';
 import type { FileStorage } from './integrations/storage/file-storage';
 import type { Logger } from './lib/logger';
+import type { PasswordHasher } from './modules/auth/password-hasher';
+import type { SessionTokens } from './modules/auth/session-tokens';
 
 export interface AppDeps {
   config: Config;
   logger: Logger;
   checkDatabase: () => Promise<void>;
   resolveCurrentUser: CurrentUserResolver;
+  auth: {
+    passwordHasher: PasswordHasher;
+    sessionTokens: SessionTokens;
+    /** Marks the session cookie `Secure` (sent over HTTPS only). */
+    secureCookies: boolean;
+  };
   repositories: Repositories;
   fileStorage: FileStorage;
   pdfTextExtractor: PdfTextExtractor;

@@ -51,7 +51,7 @@ function requestedAt(job: GenerationJobDto): number {
 }
 
 function progressPercent(job: GenerationJobDto, now: number): number {
-  if (job.status === 'SUCCEEDED') return 100;
+  if (job.status === 'COMPLETED') return 100;
   const step = Math.min(job.step, GENERATION_STEP_COUNT - 1);
   const stepStart = STEP_MARKS[step] ?? 0;
   if (job.status === 'FAILED') return stepStart;
@@ -102,7 +102,7 @@ function GenerationStatus({ cv, job }: { cv: CvDetail; job: GenerationJobDto }) 
   const doneRef = useRef<HTMLAnchorElement>(null);
   useEffect(() => {
     if (job.status === 'FAILED') retryRef.current?.focus();
-    else if (job.status === 'SUCCEEDED') doneRef.current?.focus();
+    else if (job.status === 'COMPLETED') doneRef.current?.focus();
     else titleRef.current?.focus();
   }, [job.status]);
 
@@ -112,7 +112,7 @@ function GenerationStatus({ cv, job }: { cv: CvDetail; job: GenerationJobDto }) 
 
   let live = '';
   if (running) live = `Step ${step + 1} of ${GENERATION_STEP_COUNT}: ${labels[step]}.`;
-  else if (job.status === 'SUCCEEDED') live = 'Your CV is ready.';
+  else if (job.status === 'COMPLETED') live = 'Your CV is ready.';
 
   return (
     <main className="page-main is-gen">
@@ -157,7 +157,7 @@ function GenerationStatus({ cv, job }: { cv: CvDetail; job: GenerationJobDto }) 
           />
         )}
 
-        {job.status === 'SUCCEEDED' && (
+        {job.status === 'COMPLETED' && (
           <>
             <h1 id="gen-title" className="gen-title">
               Your CV is ready

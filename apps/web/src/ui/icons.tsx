@@ -241,3 +241,53 @@ export function CvThumbIcon(props: IconProps) {
     </svg>
   );
 }
+
+/** The account button's chevron; it turns over while the menu is open. */
+export function ChevronDownIcon(props: IconProps) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" {...props}>
+      <path d="M4 5.5L7 8.5L10 5.5" {...stroke} strokeWidth="1.5" />
+    </svg>
+  );
+}
+
+/** "Show password". */
+export function EyeIcon(props: IconProps) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true" {...props}>
+      <path
+        d="M1.75 8C3.2 5.1 5.4 3.6 8 3.6S12.8 5.1 14.25 8C12.8 10.9 10.6 12.4 8 12.4S3.2 10.9 1.75 8Z"
+        {...stroke}
+        strokeWidth="1.4"
+      />
+      <circle cx="8" cy="8" r="2.1" fill="none" stroke="currentColor" strokeWidth="1.4" />
+    </svg>
+  );
+}
+
+/** "Hide password": the eye, struck through. */
+export function EyeOffIcon(props: IconProps) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true" {...props}>
+      <path
+        d="M1.75 8C3.2 5.1 5.4 3.6 8 3.6S12.8 5.1 14.25 8C12.8 10.9 10.6 12.4 8 12.4S3.2 10.9 1.75 8Z"
+        {...stroke}
+        strokeWidth="1.4"
+      />
+      <circle cx="8" cy="8" r="2.1" fill="none" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M2.75 2.75L13.25 13.25" {...stroke} strokeWidth="1.4" />
+    </svg>
+  );
+}
+
+export function LogoutIcon(props: IconProps) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" {...props}>
+      <path
+        d="M6.5 2.75H4.25C3.56 2.75 3 3.31 3 4V12C3 12.69 3.56 13.25 4.25 13.25H6.5M10.25 5.25L13 8L10.25 10.75M13 8H6.75"
+        {...stroke}
+        strokeWidth="1.4"
+      />
+    </svg>
+  );
+}

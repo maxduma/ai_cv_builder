@@ -1,13 +1,20 @@
-import type { CvDetail, CvStatus, CvSummary, GenerationJobStatus } from '@cv-builder/shared';
+import {
+  type CvContent,
+  CvContentSchema,
+  type CvDetail,
+  type CvStatus,
+  type CvSummary,
+  type GenerationJobStatus,
+} from '@cv-builder/shared';
 import { toGenerationJobDto } from '../generation/generation.mapper';
 import { toSourceDocumentDto } from '../source-documents/source-documents.mapper';
 import type { CvDetailRecord, CvSummaryRecord } from './cvs.repository';
 
 const STATUS_BY_JOB: Record<GenerationJobStatus, CvStatus> = {
-  QUEUED: 'generating',
-  RUNNING: 'generating',
+  PENDING: 'generating',
+  PROCESSING: 'generating',
   FAILED: 'failed',
-  SUCCEEDED: 'ready',
+  COMPLETED: 'ready',
 };
 
 /** A CV without any generation job is still a draft; otherwise its latest job decides. */
@@ -34,5 +41,12 @@ export function toCvDetail(cv: CvDetailRecord): CvDetail {
     sourceText: cv.sourceText,
     sourceDocument: sourceDocument ? toSourceDocumentDto(sourceDocument) : null,
     latestGeneration: latestGeneration ? toGenerationJobDto(latestGeneration) : null,
+    content: toContent(cv.content),
   };
+}
+
+/** Content is validated before every write; a CV that was never generated has none (`null`). */
+function toContent(content: CvDetailRecord['content']): CvContent | null {
+  const parsed = CvContentSchema.safeParse(content);
+  return parsed.success ? parsed.data : null;
 }

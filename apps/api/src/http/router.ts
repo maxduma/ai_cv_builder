@@ -1,5 +1,8 @@
 import { Router } from 'express';
 import type { AppDeps } from '../app';
+import { createAuthRouter, createCurrentUserRouter } from '../modules/auth/auth.routes';
+import { createAuthService } from '../modules/auth/auth.service';
+import { createSessionCookie } from '../modules/auth/session-cookie';
 import { createCvsRouter } from '../modules/cvs/cvs.routes';
 import { createCvsService } from '../modules/cvs/cvs.service';
 import { createGenerationRouter } from '../modules/generation/generation.routes';
@@ -22,6 +25,12 @@ export function createApiRouter(deps: AppDeps): Router {
     anthropic: deps.config.anthropic,
     logger: deps.logger,
   });
+  const authService = createAuthService({
+    users: repositories.users,
+    passwordHasher: deps.auth.passwordHasher,
+    sessionTokens: deps.auth.sessionTokens,
+  });
+  const sessionCookie = createSessionCookie({ secure: deps.auth.secureCookies });
   const cvsService = createCvsService(repositories.cvs);
   const sourceDocumentsService = createSourceDocumentsService({
     cvs: repositories.cvs,
@@ -36,9 +45,12 @@ export function createApiRouter(deps: AppDeps): Router {
 
   // Public routes.
   router.use('/health', createHealthRouter(healthService));
+  router.use('/auth', createAuthRouter(authService, sessionCookie));
 
-  // Everything below acts on behalf of a user.
+  // Everything below acts on behalf of a user. Without a session, any other path (even an
+  // unknown one) answers 401.
   router.use(currentUser(deps.resolveCurrentUser));
+  router.use('/auth', createCurrentUserRouter());
   router.use('/cvs', createCvsRouter(cvsService));
   router.use('/cvs', createSourceDocumentsRouter(sourceDocumentsService));
   router.use(createGenerationRouter(generationService));

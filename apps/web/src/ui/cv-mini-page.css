@@ -21,6 +21,54 @@
   background: #1f1f25;
 }
 
+/* A written name, on the sample pages beside Log in and Sign up. */
+.pv-name-text {
+  margin: 0;
+  color: #141419;
+  font-size: 11.5px;
+  line-height: 1.2;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  white-space: nowrap;
+}
+
+/* Two columns: a tinted sidebar (photo, contact, skills) beside the main column. */
+.pv-split {
+  display: grid;
+  grid-template-columns: 34% minmax(0, 1fr);
+  height: 100%;
+}
+
+.pv-side {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px 9px 0 12px;
+  background: color-mix(in oklab, var(--accent) 7%, #f7f7fa);
+}
+
+.pv-avatar {
+  display: block;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  margin-bottom: 7px;
+  border-radius: 999px;
+  background: linear-gradient(
+    140deg,
+    color-mix(in oklab, var(--accent) 30%, #fff),
+    color-mix(in oklab, var(--accent) 12%, #fff)
+  );
+  box-shadow: 0 0 0 2px #fff;
+}
+
+.pv-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 16px 14px 0 12px;
+}
+
 .pv-role {
   max-width: 100%;
   margin: 4px 0 0;
@@ -31,6 +79,11 @@
   font-weight: 600;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+/* Under a written name (the login aside's sample pages) the design sets the role 1px closer. */
+.pv-name-text + .pv-role {
+  margin-top: 3px;
 }
 
 .pv-role-ghost {
@@ -145,4 +198,9 @@
 
 .b-ghost {
   background: #ececf0;
+}
+
+/* Accent bars, e.g. skills in the sidebar. */
+.b-ac {
+  background: color-mix(in oklab, var(--accent) 35%, #fff);
 }

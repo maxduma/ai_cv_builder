@@ -1,6 +1,35 @@
-import type { ApiErrorBody, CvDetail, CvListResponse } from '@cv-builder/shared';
+import {
+  type ApiErrorBody,
+  CvContentSchema,
+  type CvDetail,
+  type CvListResponse,
+} from '@cv-builder/shared';
 import { describe, expect, it } from 'vitest';
-import { sendJson, startApp, TEST_USER_HEADER, USER_A, USER_B } from '../../test/start-app';
+import {
+  sendJson,
+  startApp,
+  startAppWithTwoAccounts,
+  TEST_USER_HEADER,
+  USER_A,
+  USER_B,
+} from '../../test/start-app';
+
+const CONTENT = CvContentSchema.parse({
+  version: 1,
+  contact: {
+    firstName: 'Alex',
+    lastName: 'Morgan',
+    headline: 'Machine Learning Engineer',
+    email: '',
+    phone: '',
+    location: '',
+    links: [],
+  },
+  summary: 'Builds retrieval pipelines and evaluation tooling.',
+  experience: [],
+  education: [],
+  skills: [{ id: 'skill-1', name: 'Python' }],
+});
 
 async function createCv(baseUrl: string, body: unknown = { targetRole: 'AI Engineer' }) {
   const response = await sendJson(`${baseUrl}/api/cvs`, 'POST', body);
@@ -77,6 +106,34 @@ describe('GET /api/cvs', () => {
 });
 
 describe('GET /api/cvs/:cvId', () => {
+  it('has no content while the CV is a draft', async () => {
+    const { baseUrl } = await startApp();
+    const cv = await createCv(baseUrl);
+
+    const response = await fetch(`${baseUrl}/api/cvs/${cv.id}`);
+
+    expect(await response.json()).toMatchObject({ status: 'draft', content: null });
+  });
+
+  it('includes the generated content once a generation has completed', async () => {
+    const { baseUrl, repositories } = await startApp();
+    const cv = await createCv(baseUrl, {
+      targetRole: 'AI Engineer',
+      sourceText: 'Built retrieval pipelines and evaluation tooling for three years.',
+    });
+    await fetch(`${baseUrl}/api/cvs/${cv.id}/generations`, { method: 'POST' });
+    const job = await repositories.generation.claimNext();
+    if (!job) throw new Error('no job to claim');
+    await repositories.generation.succeed(job, CONTENT, []);
+
+    const detail = await fetch(`${baseUrl}/api/cvs/${cv.id}`);
+    const list = (await (await fetch(`${baseUrl}/api/cvs`)).json()) as CvListResponse;
+
+    expect(await detail.json()).toMatchObject({ status: 'ready', content: CONTENT });
+    // Lists never carry the content.
+    expect(list.items[0]).not.toHaveProperty('content');
+  });
+
   it("reports another user's CV as not found", async () => {
     const { baseUrl } = await startApp();
     const cv = await createCv(baseUrl);
@@ -143,5 +200,33 @@ describe('PATCH /api/cvs/:cvId', () => {
 
     expect(response.status).toBe(404);
     expect(db.cvs[0]?.targetRole).toBe('AI Engineer');
+  });
+});
+
+describe('ownership with session cookies', () => {
+  it('answers 404 when another account reads or changes a CV', async () => {
+    const { baseUrl, db, owner, other } = await startAppWithTwoAccounts();
+    const created = await sendJson(
+      `${baseUrl}/api/cvs`,
+      'POST',
+      { targetRole: 'AI Engineer' },
+      { cookie: owner.cookie },
+    );
+    const cv = (await created.json()) as CvDetail;
+    const url = `${baseUrl}/api/cvs/${cv.id}`;
+
+    const mine = await fetch(url, { headers: { cookie: owner.cookie } });
+    const read = await fetch(url, { headers: { cookie: other.cookie } });
+    const changed = await sendJson(
+      url,
+      'PATCH',
+      { targetRole: 'Hijacked' },
+      { cookie: other.cookie },
+    );
+
+    expect(mine.status).toBe(200);
+    expect(read.status).toBe(404);
+    expect(changed.status).toBe(404);
+    expect(db.cvs).toMatchObject([{ userId: owner.user.id, targetRole: 'AI Engineer' }]);
   });
 });
