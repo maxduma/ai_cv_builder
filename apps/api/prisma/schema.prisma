@@ -1,0 +1,105 @@
+// Data model. See the "Data model" section of the README for an overview.
+// Conventions: UUIDv7 ids, timestamptz columns, snake_case table/column names.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  cvs Cv[]
+
+  @@map("users")
+}
+
+model Cv {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  title          String
+  targetRole     String?  @map("target_role")
+  jobDescription String?  @map("job_description")
+  /// Current structured CV document. Always validated against the shared content schema before it is written.
+  content        Json?
+  /// Incremented on every content write; used for optimistic locking between user edits and AI writes.
+  contentVersion Int      @default(0) @map("content_version")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  generationJobs  GenerationJob[]
+  sourceDocuments SourceDocument[]
+
+  // Jobs and documents reference (id, user_id) together, so the database guarantees
+  // they always belong to the same user as their CV.
+  @@unique([id, userId])
+  @@index([userId, updatedAt])
+  @@map("cvs")
+}
+
+enum GenerationJobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+
+  @@map("generation_job_status")
+}
+
+// A persistent, asynchronous CV generation run. Postgres acts as the queue: a worker claims
+// QUEUED jobs with `FOR UPDATE SKIP LOCKED` and keeps `heartbeat_at` fresh while running.
+model GenerationJob {
+  id           String              @id @default(uuid(7)) @db.Uuid
+  cvId         String              @map("cv_id") @db.Uuid
+  userId       String              @map("user_id") @db.Uuid
+  status       GenerationJobStatus @default(QUEUED)
+  /// Validated snapshot of the parameters the job was created with.
+  input        Json
+  /// Validated AI output; copied to `cvs.content` when the job succeeds.
+  result       Json?
+  attempts     Int                 @default(0)
+  errorCode    String?             @map("error_code")
+  errorMessage String?             @map("error_message")
+  startedAt    DateTime?           @map("started_at") @db.Timestamptz(3)
+  heartbeatAt  DateTime?           @map("heartbeat_at") @db.Timestamptz(3)
+  finishedAt   DateTime?           @map("finished_at") @db.Timestamptz(3)
+  createdAt    DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  cv Cv @relation(fields: [cvId, userId], references: [id, userId], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([cvId, createdAt])
+  @@index([userId, createdAt])
+  @@map("generation_jobs")
+}
+
+// A file the user uploaded as source material for a CV (e.g. an existing CV or a LinkedIn export).
+model SourceDocument {
+  id            String   @id @default(uuid(7)) @db.Uuid
+  cvId          String   @map("cv_id") @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  originalName  String   @map("original_name")
+  mimeType      String   @map("mime_type")
+  sizeBytes     Int      @map("size_bytes")
+  /// Location of the file in file storage.
+  storageKey    String   @unique @map("storage_key")
+  /// Plain text extracted from the file; this is what the AI receives.
+  extractedText String?  @map("extracted_text")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  cv Cv @relation(fields: [cvId, userId], references: [id, userId], onDelete: Cascade)
+
+  @@index([cvId, createdAt])
+  @@map("source_documents")
+}

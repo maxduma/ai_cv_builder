@@ -1,0 +1,73 @@
+name: ai-cv-builder
+
+# Shared by the Node services: one dev image, the repo bind-mounted for hot reload, and
+# node_modules kept in container-only volumes (Linux builds of native deps, not the host's).
+# After changing dependencies, run `docker compose up --build -V` to refresh those volumes.
+x-node-app: &node-app
+  build:
+    context: .
+    dockerfile: Dockerfile.dev
+  init: true
+  volumes:
+    - .:/app
+    - /app/node_modules
+    - /app/apps/api/node_modules
+    - /app/apps/web/node_modules
+    - /app/packages/shared/node_modules
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      # Local development credentials only; the port is published on localhost only.
+      POSTGRES_USER: cvbuilder
+      POSTGRES_PASSWORD: cvbuilder
+      POSTGRES_DB: cvbuilder
+    ports:
+      - '127.0.0.1:${DB_PORT:-54320}:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # Check over TCP: on first start Postgres runs a temporary socket-only server during init.
+      test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U cvbuilder -d cvbuilder']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    <<: *node-app
+    working_dir: /app/apps/api
+    # Generate the Prisma client, apply pending migrations, then run the API in watch mode.
+    # `exec` makes tsx the main process, so it receives stop signals and shuts down gracefully.
+    command: >-
+      sh -c "pnpm db:generate && pnpm db:deploy &&
+      exec ./node_modules/.bin/tsx watch --clear-screen=false src/server.ts"
+    restart: on-failure
+    environment:
+      NODE_ENV: development
+      PORT: '4000'
+      DATABASE_URL: postgresql://cvbuilder:cvbuilder@db:5432/cvbuilder
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-}
+      LOG_LEVEL: ${LOG_LEVEL:-}
+      PRISMA_HIDE_UPDATE_MESSAGE: '1'
+    ports:
+      - '127.0.0.1:${API_PORT:-4000}:4000'
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    <<: *node-app
+    working_dir: /app/apps/web
+    command: ['./node_modules/.bin/vite']
+    environment:
+      API_PROXY_TARGET: http://api:4000
+    ports:
+      # All interfaces, so the app can be opened from a phone on the same network.
+      - '${WEB_PORT:-5173}:5173'
+    depends_on:
+      - api
+
+volumes:
+  pgdata:

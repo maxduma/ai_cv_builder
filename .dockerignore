@@ -1,0 +1,10 @@
+# The dev image only needs the package manifests; source code is bind-mounted at runtime.
+**/node_modules
+**/dist
+**/coverage
+**/src/generated
+.git
+.env
+.env.*
+*.log
+.DS_Store
