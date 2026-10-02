@@ -2,7 +2,7 @@
 
 A fullstack app for building tailored CVs with Claude.
 
-**Status:** the main flow works end to end. Users sign up and log in with an email and password; "My CVs" lists their CVs; "Create a new CV" takes a target role plus an uploaded PDF and/or a description, and Claude writes the CV in a background job whose progress the UI follows. The CV editor and PDF export come in later steps (see [Roadmap](#roadmap)).
+**Status:** the main flow works end to end. Users sign up and log in with an email and password; "My CVs" lists their CVs; "Create a new CV" takes a target role plus an uploaded PDF and/or a description, and Claude writes the CV in a background job whose progress the UI follows. Claude also asks a few questions about what is missing or vague; each answer updates its section of the CV in the background. The structured editor (contact, summary, experience, education, skills, with a live A4 preview) saves edits automatically. PDF export comes in a later step (see [Roadmap](#roadmap)).
 
 | Layer    | Stack                                                                       |
 | -------- | --------------------------------------------------------------------------- |
@@ -88,9 +88,11 @@ apps/
       db/                   Prisma client (node-postgres driver adapter), DB ping, repositories wiring
       http/                 Express wiring: router (composition root), middleware
       modules/<domain>/     routes → service → repository (+ mapper) per domain: auth (sign-up,
-                            login, sessions), users, cvs, source-documents (PDF upload),
-                            generation (jobs, worker, the Claude generator in claude/, the
-                            development mock)
+                            login, sessions), users, cvs (incl. saving edited content),
+                            source-documents (PDF upload), questions (the AI's questions and
+                            answers), generation (jobs and worker for generations and answers,
+                            Claude in claude/, answers/ for applying an answer, the
+                            development mocks)
       integrations/         ai (Anthropic client), storage (uploaded files on disk),
                             extraction (PDF → text with unpdf)
       lib/                  logger, error types
@@ -101,11 +103,15 @@ apps/
       app/                  router, layout, route error boundary
       features/auth/        log in and sign up pages, the current session
       features/cvs/         dashboard (My CVs), create (the form), status (generation progress)
-      ui/                   shared pieces from the design: status chips, state panels, CV thumbnail, icons
+      features/clarify/     "A few quick questions": answering the AI's questions after a draft
+      features/editor/      the CV editor: sections, live preview, autosave session, questions card
+      ui/                   shared pieces from the design: status chips, state panels, CV page and
+                            thumbnail, icons
       styles/               design tokens and base/component CSS (from the design canvas)
       lib/                  API client (incl. upload with progress), query client, formatting
 packages/
-  shared/                   types and Zod schemas shared by web and api (DTOs, error shape, enums)
+  shared/                   types and Zod schemas shared by web and api (DTOs, error shape, enums),
+                            and the three-way merge of CV content both sides use
 docker-compose.yml          db + api + web for local development
 Dockerfile.dev              dev image: Node 22 + pnpm + installed dependencies
 ```
@@ -144,20 +150,23 @@ Errors are handled in one place. Every error response has the shape `{ error: { 
 
 Apart from `/api/health` and signing up, logging in and logging out, every route acts on behalf of the logged-in user and answers 401 without a session. Another user's CV or job answers 404.
 
-| Method and path                         | Purpose                                                                                                |
-| --------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `POST /api/auth/signup`                 | Create an account `{ name, email, password }` and log in; `409` if taken                               |
-| `POST /api/auth/login`                  | Log in `{ email, password }`: sets the session cookie, or `401`                                        |
-| `POST /api/auth/logout`                 | Log out: clears the session cookie (`204`)                                                             |
-| `GET /api/auth/me`                      | The logged-in user, or `401` without a valid session                                                   |
-| `GET /api/cvs`                          | The user's CVs with their status (`draft`, `generating`, `failed`, `ready`)                            |
-| `POST /api/cvs`                         | Create a draft `{ targetRole?, sourceText? }`                                                          |
-| `GET /api/cvs/:cvId`                    | A CV with its sources, latest generation and generated `content` (`null` until a generation completes) |
-| `PATCH /api/cvs/:cvId`                  | Save the target role and/or the free-text source (`""`/`null` clears)                                  |
-| `PUT /api/cvs/:cvId/source-document`    | Upload the source PDF (multipart field `file`); replaces the previous one                              |
-| `DELETE /api/cvs/:cvId/source-document` | Remove the source PDF                                                                                  |
-| `POST /api/cvs/:cvId/generations`       | Start generation → `202` + `Location`; `409` while one is running                                      |
-| `GET /api/generation-jobs/:jobId`       | A generation's status, current step and `issues` (what the AI found missing or unclear), for polling   |
+| Method and path                                     | Purpose                                                                                                                                          |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `POST /api/auth/signup`                             | Create an account `{ name, email, password }` and log in; `409` if taken                                                                         |
+| `POST /api/auth/login`                              | Log in `{ email, password }`: sets the session cookie, or `401`                                                                                  |
+| `POST /api/auth/logout`                             | Log out: clears the session cookie (`204`)                                                                                                       |
+| `GET /api/auth/me`                                  | The logged-in user, or `401` without a valid session                                                                                             |
+| `GET /api/cvs`                                      | The user's CVs with their status (`draft`, `generating`, `failed`, `ready`)                                                                      |
+| `POST /api/cvs`                                     | Create a draft `{ targetRole?, sourceText? }`                                                                                                    |
+| `GET /api/cvs/:cvId`                                | A CV with its sources, latest generation, `content` (`null` until generated), `contentVersion` and the AI's `questions`                          |
+| `PATCH /api/cvs/:cvId`                              | Save the target role and/or the free-text source (`""`/`null` clears)                                                                            |
+| `PUT /api/cvs/:cvId/source-document`                | Upload the source PDF (multipart field `file`); replaces the previous one                                                                        |
+| `DELETE /api/cvs/:cvId/source-document`             | Remove the source PDF                                                                                                                            |
+| `PUT /api/cvs/:cvId/content`                        | Save edited content `{ baseVersion, content }` → `{ contentVersion }`; `409 CONTENT_CONFLICT` with the newer content when `baseVersion` is stale |
+| `POST /api/cvs/:cvId/generations`                   | Start generation → `202` + `Location`; `409` while one is running, or once the CV has content                                                    |
+| `POST /api/cvs/:cvId/questions/:questionId/answers` | Answer a question `{ answer }` → `202` + `Location` of the job that applies it                                                                   |
+| `PATCH /api/cvs/:cvId/questions/:questionId`        | Skip or dismiss a question `{ status: "skipped" \| "dismissed" }`                                                                                |
+| `GET /api/generation-jobs/:jobId`                   | A job's status (a generation, or an answer being applied), current step and `issues`, for polling                                                |
 
 Uploads are checked before anything is stored: CV ownership (before the body is read), size (10 MB), type (declared type and the `%PDF-` signature), page count (20) and readable text. Files are stored under keys the API generates; the client's file name is only displayed.
 
@@ -172,7 +181,7 @@ Cross-site requests can't act with the session: `SameSite=Lax` keeps the cookie 
 Ownership is enforced at two levels:
 
 - **Queries:** every repository query filters by `user_id`. Another user's CV returns 404, so its existence is not revealed.
-- **Database:** `generation_jobs` and `source_documents` reference `(cv_id, user_id)` → `cvs(id, user_id)`. A job or document therefore cannot exist for a user who doesn't own its CV.
+- **Database:** `generation_jobs`, `source_documents` and `cv_questions` reference `(cv_id, user_id)` → `cvs(id, user_id)`, and an answer job references `(question_id, cv_id)` → `cv_questions(id, cv_id)`. A job, document or question therefore cannot exist for a user who doesn't own its CV, and a job can't apply an answer to another CV.
 
 ### Data model
 
@@ -181,13 +190,17 @@ erDiagram
   users ||--o{ cvs : owns
   cvs ||--o{ generation_jobs : "generated by"
   cvs ||--o{ source_documents : "built from"
+  cvs ||--o{ cv_questions : "asked about"
+  cv_questions ||--o{ generation_jobs : "answers applied by"
   users { uuid id  text email  text name  text password_hash }
   cvs { uuid id  uuid user_id  text title  text target_role  text job_description  text source_text  jsonb content  int content_version }
-  generation_jobs { uuid id  uuid cv_id  uuid user_id  enum status  int progress_step  jsonb input  jsonb result  jsonb issues  int attempts  timestamptz heartbeat_at }
+  generation_jobs { uuid id  uuid cv_id  uuid user_id  enum kind  uuid question_id  enum status  int progress_step  jsonb input  jsonb result  jsonb issues  int attempts  timestamptz heartbeat_at }
+  cv_questions { uuid id  uuid cv_id  uuid user_id  int position  text section  text item_id  text question  text why  enum status  text answer  text follow_up }
   source_documents { uuid id  uuid cv_id  uuid user_id  text original_name  int page_count  text storage_key  text extracted_text }
 ```
 
-- **CV content** is a structured JSON document stored on the CV, because it is always read and written together with its CV. It is validated against a shared Zod schema before every write. `content_version` provides optimistic locking, so an AI result can't silently overwrite a user's edits.
+- **CV content** is a structured JSON document stored on the CV, because it is always read and written together with its CV. Every list entry (role, bullet, school, skill, link) has a stable id. It is validated against a shared Zod schema before every write. `content_version` provides optimistic locking (see [Editing and the AI's questions](#editing-and-the-ais-questions)).
+- **Questions** are the AI's questions about a CV, one row each, so each has its own status (`OPEN`, `SKIPPED`, `ANSWERED`, `DISMISSED`), latest answer and follow-up.
 - **Generation jobs** keep a validated snapshot of their `input`, plus their validated `result` and `issues`, which allows auditing and restoring.
 - **Source documents** store file metadata and extracted text. The files themselves will live in file storage.
 - IDs are UUIDv7 (time-ordered) and all timestamps are `timestamptz`.
@@ -222,7 +235,24 @@ stateDiagram-v2
 - **Prompt:** the system prompt holds only the instructions: use the facts in the material and never invent employers, titles, dates, degrees, metrics or contact details; put what matters for the target role first; write short, action-led bullets; report what is missing. The user's PDF text and notes and the target role follow in separate delimited blocks, and the prompt treats their content as data, not instructions.
 - **Structured output:** Claude answers in JSON constrained by a schema. The API checks the stop reason, parses the JSON and validates it with a strict Zod schema, then maps it to the shared CV content schema, which the worker checks once more before saving. Invalid JSON or a schema mismatch gets one retry within the same deadline.
 - **Contact guard:** a deterministic check removes any email, phone number or link that doesn't appear in the user's material, and reports it as an issue, so a CV never carries invented contact details.
-- **Issues:** what the AI found missing, ambiguous or incomplete (a role without dates, no email), phrased as questions for the user. They are stored with the job and returned as `issues` by `GET /api/generation-jobs/:id`.
+- **Issues:** what the AI found missing, ambiguous or incomplete (a role without dates, no email), phrased as questions for the user. When an issue is about one role or school, Claude names it, and the API records that entry's id. The issues stay on the job (`issues` in `GET /api/generation-jobs/:id`) and become the CV's questions.
+
+### Editing and the AI's questions
+
+A generated CV opens in the editor. If the AI asked questions, the "ready" screen offers them first ("A few quick questions"); skipped and open questions also wait at the top of the editor.
+
+**Saving.** The editor saves automatically, 700 ms after the last edit, one request at a time. Each save sends the whole document with the version it was edited from (`PUT /api/cvs/:id/content`). The editing state lives outside React (`features/editor/editor-session.ts`), so a save in flight finishes and edits made just before leaving still go out; closing the tab with unsaved edits asks first. A value that breaks a rule (an incomplete email) shows its error under the field and stays unsaved, while everything else is saved. The rules apply only to what changed, so a value that was already stored never blocks a save.
+
+**Edits are never overwritten.** Every write of the content (a save, an applied answer) bumps `content_version` under a lock on the CV's row; a save over an older version gets `409 CONTENT_CONFLICT` with the newer content. Both sides then use one three-way merge (`packages/shared/src/cv-merge.ts`): from the version both copies started at, a field only one side changed takes that change, and a field both changed keeps the person's edit. Lists merge entry by entry, by id, so an AI addition and a manual edit to another entry both survive, and a deleted entry stays deleted. The editor merges every newer version it receives (an applied answer, another tab) into its unsaved draft the same way.
+
+**Answering a question.** An answer is saved with the question and queued as an `APPLY_ANSWER` job (the same queue and worker as generations; answers are claimed first, since they take seconds). Answers to one CV run one at a time, each from the CV as it is when the job starts, so each builds on the one before.
+
+1. Claude gets the CV, the question (its section and, for a role or school, which one) and the answer, and replies in a schema that covers only that section: an answer about the summary can't change anything else. An empty value means "keep", and nothing can be deleted. The worker also drops changes to any entry but the question's.
+2. Contact details must appear in the answer itself, as in generation; an invented or incomplete one turns into a follow-up question instead.
+3. If the answer is too vague to state as a fact, Claude asks one follow-up question instead of guessing; the question opens again with it. It never asks twice.
+4. The changes are merged into the CV as it is now (see above), so whatever the person edited while the job ran is kept. Additions that duplicate an entry or don't fit a list's limit are left out. The result is validated again before it is written, and the job records what changed (`updated`, `no_change` or `needs_more_info`).
+
+The editor and the questions screen follow running updates by polling the job, and show "Updating…", the outcome, or a failure with "Try again". A failed update changes nothing.
 
 #### Job error codes
 
@@ -243,6 +273,7 @@ A failed job stores a code and a message. The CV's page shows the message, which
 | `AI_OUTPUT_TRUNCATED` | The answer hit the output limit before it was complete                     |
 | `AI_INVALID_JSON`     | The answer wasn't valid JSON, twice                                        |
 | `AI_SCHEMA_MISMATCH`  | The answer didn't match the CV schema, twice                               |
+| `AI_INVALID_UPDATE`   | An answer's changes, merged into the CV, broke its rules; nothing changed  |
 
 ## Decisions and trade-offs
 
@@ -256,6 +287,8 @@ A failed job stores a code and a message. The CV's page shows the message, which
 - **Default ports:** API on 4000 and PostgreSQL on 54320, which avoids clashing with common local services on 3000 and 5432. Override them in `.env`.
 - **Stateless sessions:** the server keeps no session list, so logging out only removes the cookie. A token that leaked stays valid until it expires (7 days at most). Revoking tokens would need a session table or a per-user token version.
 - **No login rate limiting yet:** limiting by client IP needs `trust proxy` configured for whatever proxy runs in front of the API; without it every client shares the proxy's IP and one attacker could lock everyone out. It is a follow-up. Meanwhile every guess costs a full scrypt hash.
+- **Manual edits win:** when an applied answer and a manual edit change the same field, the edit is kept. A CV with content can't be generated again (`409 CV_ALREADY_GENERATED`): that would replace the person's edits, and regenerating comes later.
+- **Whole-document saves:** each save sends the whole CV (a few KB). Patches per field would save bandwidth, but versioned whole-document saves plus a merge are simpler to get right.
 - **Sign-up reveals taken emails** (`409 EMAIL_TAKEN`), which a helpful sign-up form can't avoid without email verification. Login doesn't.
 
 ## Troubleshooting
@@ -270,6 +303,6 @@ A failed job stores a code and a message. The CV's page shows the message, which
 1. ~~Foundation: monorepo, Docker, database schema, API and web shells~~
 2. ~~Document upload and text extraction~~
 3. ~~AI CV generation: persistent jobs and worker, Claude structured output, validation~~
-4. CV editor UI
+4. ~~CV editor and the AI's questions~~
 5. PDF export
 6. ~~Authentication~~
