@@ -1,6 +1,7 @@
 import {
   CreateCvRequestSchema,
   CvIdParamsSchema,
+  UpdateCvRequestSchema,
   type CvDetail,
   type CvListResponse,
 } from '@cv-builder/shared';
@@ -21,7 +22,7 @@ export function createCvsRouter(cvsService: CvsService): Router {
 
   router.post('/', async (req, res) => {
     const user = requireUser(req);
-    const input = CreateCvRequestSchema.parse(req.body);
+    const input = CreateCvRequestSchema.parse(req.body ?? {});
     const cv = await cvsService.create(user.id, input);
     res
       .status(201)
@@ -33,6 +34,15 @@ export function createCvsRouter(cvsService: CvsService): Router {
     const user = requireUser(req);
     const { cvId } = CvIdParamsSchema.parse(req.params);
     const cv = await cvsService.get(user.id, cvId);
+    res.json(toCvDetail(cv) satisfies CvDetail);
+  });
+
+  // Stores the target role and the free-text source ("describe your experience").
+  router.patch('/:cvId', async (req, res) => {
+    const user = requireUser(req);
+    const { cvId } = CvIdParamsSchema.parse(req.params);
+    const input = UpdateCvRequestSchema.parse(req.body ?? {});
+    const cv = await cvsService.update(user.id, cvId, input);
     res.json(toCvDetail(cv) satisfies CvDetail);
   });
 

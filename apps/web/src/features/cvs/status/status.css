@@ -1,0 +1,381 @@
+/* ---------- generation status ---------- */
+.gen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 600px;
+  margin: 8px auto 0;
+  text-align: center;
+  animation: cvb-rise var(--dur-enter) var(--ease-out) both;
+}
+
+.gen-title {
+  margin: 24px 0 0;
+  color: var(--ink);
+  font-size: 28px;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+}
+
+.gen-title:focus {
+  outline: none;
+}
+
+.gen-em {
+  color: color-mix(in oklab, var(--accent) 88%, #000);
+}
+
+.gen-sub {
+  max-width: 520px;
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.55;
+  text-wrap: balance;
+}
+
+.gen-sub strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.gen-card {
+  align-self: stretch;
+  margin-top: 28px;
+  padding: 20px 22px 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+  box-shadow: var(--sh-sm);
+  text-align: left;
+}
+
+.gbar {
+  position: relative;
+  display: block;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #ececf0;
+}
+
+.gbar-fill {
+  position: relative;
+  display: block;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 999px;
+  background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 78%, #fff), var(--accent));
+  transition: width 420ms var(--ease-out);
+}
+
+.gbar-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0),
+    rgba(255, 255, 255, 0.5),
+    rgba(255, 255, 255, 0)
+  );
+  transform: translateX(-100%);
+  animation: cvb-sweep 1.8s ease-in-out infinite;
+}
+
+.gbar.is-failed .gbar-fill {
+  background: var(--danger);
+}
+
+.gbar.is-failed .gbar-fill::after {
+  display: none;
+}
+
+.gmeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px 12px;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.gmeta strong {
+  color: var(--ink);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.gmeta.is-failed strong {
+  color: var(--danger-ink);
+}
+
+.gtime {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.gsteps {
+  display: flex;
+  flex-direction: column;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gstep {
+  position: relative;
+  display: flex;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.gstep:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 36px;
+  bottom: -6px;
+  left: 11.25px;
+  width: 1.5px;
+  border-radius: 1px;
+  background: var(--line-2);
+}
+
+.gstep.is-done:not(:last-child)::after {
+  background: color-mix(in oklab, var(--accent) 45%, #fff);
+}
+
+.gstep-ico {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1.5px var(--line-2);
+  color: #fff;
+}
+
+.gstep-ico svg {
+  display: block;
+}
+
+.gstep.is-done .gstep-ico {
+  background: var(--accent);
+  box-shadow: none;
+}
+
+.gstep.is-done .gstep-ico svg {
+  animation: cvb-pop-in 380ms var(--ease-spring) both;
+}
+
+.gstep.is-active .gstep-ico {
+  box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--accent) 22%, transparent);
+}
+
+.gstep.is-failed .gstep-ico {
+  background: var(--danger);
+  box-shadow: none;
+}
+
+.gstep-spin {
+  position: absolute;
+  inset: 0;
+  display: block;
+  border: 2px solid transparent;
+  border-top-color: var(--accent);
+  border-right-color: var(--accent);
+  border-radius: 999px;
+  animation: cvb-spin 900ms linear infinite;
+}
+
+.gstep-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.gstep-label {
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.4;
+  font-weight: 550;
+}
+
+.gstep.is-pending .gstep-label {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.gstep-detail {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.gstep.is-active .gstep-detail {
+  animation: cvb-breathe 2s ease-in-out infinite;
+}
+
+.gstep.is-failed .gstep-detail {
+  color: var(--danger-ink);
+}
+
+.gen-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.gen-help {
+  max-width: 460px;
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.gen-ref {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.done-card {
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+  gap: 14px;
+  margin-top: 28px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+  box-shadow: var(--sh-sm);
+  text-align: left;
+  animation: cvb-rise 420ms 120ms var(--ease-out) both;
+}
+
+.done-thumb {
+  display: block;
+  flex-shrink: 0;
+  color: var(--accent);
+  filter: drop-shadow(0 1px 1px rgba(17, 17, 26, 0.06));
+}
+
+.done-text {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  gap: 2px;
+  min-width: 0;
+}
+
+.done-title {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.35;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.done-meta {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.status-loading {
+  display: flex;
+  justify-content: center;
+  margin-top: 64px;
+  color: var(--faint);
+}
+
+@keyframes cvb-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes cvb-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (max-width: 599px) {
+  .gen {
+    margin-top: 0;
+  }
+
+  .gen-title {
+    margin-top: 20px;
+    font-size: 22px;
+  }
+
+  .gen-sub {
+    font-size: 14.5px;
+  }
+
+  .gen-card {
+    margin-top: 22px;
+    padding: 16px 16px 8px;
+  }
+
+  .gen-actions {
+    flex-direction: column-reverse;
+    align-self: stretch;
+    gap: 10px;
+    margin-top: 20px;
+  }
+
+  .gen-actions .btn {
+    width: 100%;
+    height: 48px;
+    font-size: 15px;
+  }
+
+  .done-card {
+    margin-top: 22px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gbar-fill::after,
+  .gstep.is-active .gstep-detail {
+    animation: none !important;
+  }
+
+  /* Spinners slow down instead of stopping. */
+  .gstep-spin {
+    animation: cvb-spin 1.6s linear infinite !important;
+  }
+}

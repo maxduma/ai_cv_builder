@@ -6,6 +6,15 @@ export const ERROR_CODES = [
   'UNAUTHORIZED',
   'NOT_FOUND',
   'INTERNAL_ERROR',
+  // Source PDF uploads
+  'FILE_TOO_LARGE',
+  'UNSUPPORTED_FILE_TYPE',
+  'PDF_UNREADABLE',
+  'PDF_NO_TEXT',
+  'PDF_TOO_MANY_PAGES',
+  // CV generation
+  'CV_NOT_READY',
+  'GENERATION_IN_PROGRESS',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

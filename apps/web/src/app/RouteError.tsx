@@ -1,25 +1,39 @@
 import { isRouteErrorResponse, Link, useRouteError } from 'react-router';
+import { NotFoundPage } from '../pages/NotFoundPage';
+import { AlertCircleIcon, ArrowLeftIcon } from '../ui/icons';
+import { StateIcon, StatePanel } from '../ui/StatePanel';
+import './layout.css';
 
+/** Shown when a route fails to render. Says what is safe and offers one way back. */
 export function RouteError() {
   const error = useRouteError();
-  const message = isRouteErrorResponse(error)
-    ? `${error.status} ${error.statusText}`
-    : error instanceof Error
-      ? error.message
-      : 'An unexpected error occurred.';
+  const status = isRouteErrorResponse(error) ? error.status : undefined;
+
+  if (status === 404) {
+    return <NotFoundPage />;
+  }
 
   return (
-    <div role="alert" className="mx-auto max-w-3xl p-4">
-      <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-900">
-        <h1 className="text-lg font-semibold">Something went wrong</h1>
-        <p className="mt-1 text-sm break-words">{message}</p>
-        <Link
-          to="/"
-          className="mt-3 inline-flex min-h-11 items-center text-sm font-medium underline"
-        >
-          Back to my CVs
-        </Link>
-      </div>
-    </div>
+    <main className="page-main">
+      <title>Something went wrong · CV Builder</title>
+      <StatePanel
+        tone="error"
+        headingLevel="h1"
+        visual={
+          <StateIcon tone="error">
+            <AlertCircleIcon />
+          </StateIcon>
+        }
+        title="Something went wrong"
+        description="This page ran into an unexpected problem. Your CVs are safe — go back and try again."
+        action={
+          <Link to="/" className="btn btn-primary empty-cta">
+            <ArrowLeftIcon />
+            <span>Back to My CVs</span>
+          </Link>
+        }
+        note={status ? `Error ${status}` : undefined}
+      />
+    </main>
   );
 }

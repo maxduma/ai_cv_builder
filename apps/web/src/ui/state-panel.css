@@ -1,0 +1,328 @@
+/* ---------- empty / error panel ---------- */
+.empty-panel {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 440px;
+  margin-top: 36px;
+  padding: 64px 24px;
+  text-align: center;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-2xl);
+  box-shadow:
+    0 1px 2px rgba(17, 17, 26, 0.04),
+    0 12px 32px -24px rgba(17, 17, 26, 0.2);
+}
+
+.empty-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(17, 17, 26, 0.07) 1px, transparent 0),
+    radial-gradient(
+      420px 240px at 50% 32%,
+      color-mix(in oklab, var(--accent) 9%, transparent),
+      transparent 72%
+    );
+  background-size:
+    16px 16px,
+    auto;
+  -webkit-mask-image: radial-gradient(440px 300px at 50% 34%, #000 20%, transparent 72%);
+  mask-image: radial-gradient(440px 300px at 50% 34%, #000 20%, transparent 72%);
+  pointer-events: none;
+}
+
+.empty-panel.is-error::before {
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(17, 17, 26, 0.07) 1px, transparent 0),
+    radial-gradient(420px 240px at 50% 32%, rgba(217, 45, 32, 0.07), transparent 72%);
+}
+
+.empty-panel > * {
+  position: relative;
+}
+
+.em-title {
+  margin: 24px 0 0;
+  color: var(--ink);
+  font-size: 22px;
+  line-height: 1.25;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.em-title:focus {
+  outline: none;
+}
+
+.em-text {
+  max-width: 360px;
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.55;
+  text-wrap: balance;
+}
+
+.empty-cta {
+  margin-top: 28px;
+}
+
+.state-ico {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  animation: cvb-rise 520ms var(--ease-out) backwards;
+}
+
+.state-ico svg {
+  display: block;
+}
+
+.state-ico.is-error {
+  background: var(--danger-tint);
+  color: var(--danger-ink);
+  box-shadow: inset 0 0 0 1px rgba(217, 45, 32, 0.14);
+}
+
+.state-ico.is-neutral {
+  background: var(--subtle);
+  color: var(--muted);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.state-ref {
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* ---------- floating document illustration ---------- */
+.doc-art {
+  position: relative;
+  flex-shrink: 0;
+  width: 136px;
+  height: 128px;
+}
+
+.doc-art-shadow {
+  position: absolute;
+  left: 26px;
+  bottom: 2px;
+  width: 84px;
+  height: 12px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(17, 17, 26, 0.2), rgba(17, 17, 26, 0));
+  animation: cvb-shadow 5s ease-in-out infinite;
+}
+
+.doc-art-float {
+  position: absolute;
+  inset: 0;
+  animation: cvb-float 5s ease-in-out infinite;
+}
+
+.doc-art-back {
+  position: absolute;
+  left: 20px;
+  top: 16px;
+  width: 70px;
+  height: 92px;
+  border-radius: 8px;
+  background: #f0f0f4;
+  box-shadow: 0 0 0 1px rgba(17, 17, 26, 0.07);
+  transform: rotate(-8deg);
+}
+
+.doc-art-page {
+  position: absolute;
+  left: 34px;
+  top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 74px;
+  height: 98px;
+  padding: 13px 11px;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow:
+    0 0 0 1px rgba(17, 17, 26, 0.08),
+    0 16px 30px -14px rgba(17, 17, 26, 0.32);
+}
+
+.doc-art-line {
+  display: block;
+  height: 3px;
+  border-radius: 2px;
+  background: #e4e4ea;
+  transform-origin: left center;
+  animation: cvb-type 5.6s var(--ease-out) infinite both;
+}
+
+.doc-art-line.is-name {
+  height: 5px;
+  border-radius: 3px;
+  background: #1f1f25;
+}
+
+.doc-art-line.is-role {
+  height: 3.5px;
+  background: var(--accent);
+}
+
+.doc-art-gap {
+  display: block;
+  height: 5px;
+}
+
+.doc-art-badge-wrap {
+  position: absolute;
+  left: 90px;
+  top: 78px;
+  width: 32px;
+  height: 32px;
+}
+
+.doc-art-pulse {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  opacity: 0;
+  animation: cvb-pulse 2.6s ease-out infinite;
+}
+
+.doc-art-badge {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: linear-gradient(
+    160deg,
+    color-mix(in oklab, var(--accent) 86%, #fff),
+    color-mix(in oklab, var(--accent) 90%, #000)
+  );
+  box-shadow:
+    0 0 0 3px #fff,
+    0 8px 18px -6px color-mix(in oklab, var(--accent) 70%, transparent);
+  color: #fff;
+}
+
+.doc-art-badge svg {
+  display: block;
+}
+
+.doc-art-badge.is-danger {
+  background: linear-gradient(160deg, #e85a4f, #c4291c);
+  box-shadow:
+    0 0 0 3px #fff,
+    0 8px 18px -6px rgba(196, 41, 28, 0.55);
+  animation: cvb-pop-in 460ms var(--ease-spring) both;
+}
+
+.doc-art-badge.is-ok {
+  background: linear-gradient(160deg, #36b26b, #1f7a4d);
+  box-shadow:
+    0 0 0 3px #fff,
+    0 8px 18px -6px rgba(31, 122, 77, 0.5);
+  animation: cvb-pop-in 460ms var(--ease-spring) both;
+}
+
+.doc-art.is-busy .doc-art-line {
+  animation-duration: 2.8s;
+}
+
+.doc-art.is-static .doc-art-float,
+.doc-art.is-static .doc-art-shadow,
+.doc-art.is-static .doc-art-line {
+  animation: none;
+}
+
+@keyframes cvb-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes cvb-shadow {
+  0%,
+  100% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scaleX(0.8);
+    opacity: 0.55;
+  }
+}
+
+@keyframes cvb-type {
+  0% {
+    transform: scaleX(0);
+    opacity: 1;
+  }
+  16%,
+  80% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+  92%,
+  100% {
+    transform: scaleX(1);
+    opacity: 0;
+  }
+}
+
+@keyframes cvb-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.45;
+  }
+  70%,
+  100% {
+    transform: scale(2.1);
+    opacity: 0;
+  }
+}
+
+@media (max-width: 599px) {
+  .empty-panel {
+    min-height: 0;
+    margin-top: 24px;
+    padding: 44px 20px 40px;
+    border-radius: 18px;
+  }
+
+  .empty-cta {
+    width: 100%;
+    max-width: 320px;
+    height: 48px;
+    font-size: 15px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .doc-art-float,
+  .doc-art-shadow,
+  .doc-art-line,
+  .doc-art-pulse {
+    animation: none !important;
+  }
+}

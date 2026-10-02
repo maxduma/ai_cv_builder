@@ -1,16 +1,28 @@
 import { Link } from 'react-router';
+import { ArrowLeftIcon, MissingPageIcon } from '../ui/icons';
+import { StateIcon, StatePanel } from '../ui/StatePanel';
+import '../app/layout.css';
 
 export function NotFoundPage() {
   return (
-    <div className="py-12 text-center">
-      <h1 className="text-2xl font-semibold tracking-tight">Page not found</h1>
-      <p className="mt-2 text-slate-600">The page you are looking for doesn't exist.</p>
-      <Link
-        to="/"
-        className="mt-6 inline-flex min-h-11 items-center rounded-lg bg-indigo-600 px-4 font-medium text-white hover:bg-indigo-500"
-      >
-        Back to my CVs
-      </Link>
-    </div>
+    <main className="page-main">
+      <title>Page not found · CV Builder</title>
+      <StatePanel
+        headingLevel="h1"
+        visual={
+          <StateIcon tone="neutral">
+            <MissingPageIcon />
+          </StateIcon>
+        }
+        title="Page not found"
+        description="The page you’re looking for doesn’t exist or has moved."
+        action={
+          <Link to="/" className="btn btn-primary empty-cta">
+            <ArrowLeftIcon />
+            <span>Back to My CVs</span>
+          </Link>
+        }
+      />
+    </main>
   );
 }

@@ -1,4 +1,3 @@
-import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
@@ -8,7 +7,7 @@ import { defineConfig } from 'vite';
 const apiProxyTarget = process.env.API_PROXY_TARGET ?? 'http://localhost:4000';
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react()],
   server: {
     host: true, // listen on all interfaces: required inside Docker and for testing on a phone
     port: 5173,

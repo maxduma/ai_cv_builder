@@ -28,6 +28,8 @@ model Cv {
   title          String
   targetRole     String?  @map("target_role")
   jobDescription String?  @map("job_description")
+  /// The user's experience in their own words: one of the generation sources, next to an uploaded PDF.
+  sourceText     String?  @map("source_text")
   /// Current structured CV document. Always validated against the shared content schema before it is written.
   content        Json?
   /// Incremented on every content write; used for optimistic locking between user edits and AI writes.
@@ -67,6 +69,8 @@ model GenerationJob {
   /// Validated AI output; copied to `cvs.content` when the job succeeds.
   result       Json?
   attempts     Int                 @default(0)
+  /// Current step of a running job (0–3); 4 once it has succeeded.
+  progressStep Int                 @default(0) @map("progress_step")
   errorCode    String?             @map("error_code")
   errorMessage String?             @map("error_message")
   startedAt    DateTime?           @map("started_at") @db.Timestamptz(3)
@@ -91,6 +95,7 @@ model SourceDocument {
   originalName  String   @map("original_name")
   mimeType      String   @map("mime_type")
   sizeBytes     Int      @map("size_bytes")
+  pageCount     Int?     @map("page_count")
   /// Location of the file in file storage.
   storageKey    String   @unique @map("storage_key")
   /// Plain text extracted from the file; this is what the AI receives.

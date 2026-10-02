@@ -1,1 +1,4 @@
-@import 'tailwindcss';
+/* Global styles from the CV Builder design. Feature styles live next to their components. */
+@import './styles/tokens.css';
+@import './styles/base.css';
+@import './styles/components.css';

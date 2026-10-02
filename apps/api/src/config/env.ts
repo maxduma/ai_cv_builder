@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 export const DEFAULT_ANTHROPIC_MODEL = 'claude-opus-5-5';
+export const DEFAULT_UPLOAD_DIR = './storage/uploads';
 
 const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'] as const;
 
@@ -15,6 +16,9 @@ const EnvSchema = z.object({
   DATABASE_URL: unsetIfEmpty(z.url({ protocol: /^postgres(ql)?$/ })),
   ANTHROPIC_API_KEY: unsetIfEmpty(z.string().trim().min(1).optional()),
   ANTHROPIC_MODEL: unsetIfEmpty(z.string().trim().min(1).default(DEFAULT_ANTHROPIC_MODEL)),
+  UPLOAD_DIR: unsetIfEmpty(z.string().trim().min(1).default(DEFAULT_UPLOAD_DIR)),
+  MOCK_GENERATION_STEP_MS: unsetIfEmpty(z.coerce.number().int().min(0).max(60_000).default(2_500)),
+  MOCK_GENERATION_FAIL_RATE: unsetIfEmpty(z.coerce.number().min(0).max(1).default(0)),
 });
 
 export type LogLevel = (typeof LOG_LEVELS)[number];
@@ -28,6 +32,16 @@ export interface Config {
     /** Undefined until the user configures it; AI features are disabled without it. */
     apiKey: string | undefined;
     model: string;
+  };
+  storage: {
+    /** Directory for uploaded source files (relative paths resolve against the working directory). */
+    uploadDir: string;
+  };
+  /** Until Claude is wired up, CVs are "generated" by a mock that walks through the real steps. */
+  mockGeneration: {
+    stepMs: number;
+    /** Share of runs that fail (0–1), to exercise the failure screen. */
+    failRate: number;
   };
 }
 
@@ -51,6 +65,13 @@ export function parseEnv(env: Record<string, string | undefined>): Config {
     anthropic: {
       apiKey: vars.ANTHROPIC_API_KEY,
       model: vars.ANTHROPIC_MODEL,
+    },
+    storage: {
+      uploadDir: vars.UPLOAD_DIR,
+    },
+    mockGeneration: {
+      stepMs: vars.MOCK_GENERATION_STEP_MS,
+      failRate: vars.MOCK_GENERATION_FAIL_RATE,
     },
   };
 }

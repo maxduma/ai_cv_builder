@@ -2,15 +2,15 @@
 
 A fullstack app for building tailored CVs with Claude.
 
-**Status:** project foundation. The architecture, local environment, database schema, health check, app shell and a small CV list/create slice are in place. Authentication, AI generation, document upload and PDF export come in later steps (see [Roadmap](#roadmap)).
+**Status:** the main flow works end to end with a mock generator. "My CVs" lists the user's CVs; "Create a new CV" takes a target role plus an uploaded PDF and/or a description, and generation runs as a background job whose progress the UI follows. Claude generation, the CV editor, PDF export and authentication come in later steps (see [Roadmap](#roadmap)).
 
-| Layer    | Stack                                                                          |
-| -------- | ------------------------------------------------------------------------------ |
-| Web      | React 19, TypeScript, Vite 8, React Router 7, TanStack Query 5, Tailwind CSS 4 |
-| API      | Node.js 22, TypeScript, Express 5 (REST), Zod 4, pino                          |
-| Database | PostgreSQL 17, Prisma 7                                                        |
-| AI       | Anthropic API (Claude), not yet wired up                                       |
-| Tooling  | Docker Compose, pnpm workspaces, Vitest, ESLint, Prettier                      |
+| Layer    | Stack                                                                     |
+| -------- | ------------------------------------------------------------------------- |
+| Web      | React 19, TypeScript, Vite 8, React Router 7, TanStack Query 5, plain CSS |
+| API      | Node.js 22, TypeScript, Express 5 (REST), Zod 4, pino                     |
+| Database | PostgreSQL 17, Prisma 7                                                   |
+| AI       | Anthropic API (Claude), not yet wired up                                  |
+| Tooling  | Docker Compose, pnpm workspaces, Vitest, ESLint, Prettier                 |
 
 ## Quick start
 
@@ -26,7 +26,7 @@ docker compose up --build
 
 The first start builds the dev image and installs dependencies, which takes a few minutes. After that, `docker compose up` is enough. Database migrations are applied automatically when the API starts.
 
-`ANTHROPIC_API_KEY` is the only secret. The app also starts without it: the health check reports AI as `not_configured` and the UI shows a notice.
+`ANTHROPIC_API_KEY` is the only secret. The app also starts without it (the health check reports AI as `not_configured`). Until Claude is wired up, CVs are "generated" by a mock that walks through the real steps and saves clearly labelled sample content.
 
 ### Open it on your phone
 
@@ -59,16 +59,18 @@ pnpm format      # Prettier
 
 Docker Compose reads `.env` (copy `.env.example`).
 
-| Variable            | Default           | Purpose                                     |
-| ------------------- | ----------------- | ------------------------------------------- |
-| `ANTHROPIC_API_KEY` | none              | The only secret. Required for AI features   |
-| `ANTHROPIC_MODEL`   | `claude-opus-5-5` | Claude model used for generation            |
-| `LOG_LEVEL`         | `info`            | API log level (`fatal` … `trace`, `silent`) |
-| `WEB_PORT`          | `5173`            | Host port for the web app                   |
-| `API_PORT`          | `4000`            | Host port for the API (localhost only)      |
-| `DB_PORT`           | `54320`           | Host port for PostgreSQL (localhost only)   |
+| Variable                    | Default           | Purpose                                                                 |
+| --------------------------- | ----------------- | ----------------------------------------------------------------------- |
+| `ANTHROPIC_API_KEY`         | none              | The only secret. Required for AI features                               |
+| `ANTHROPIC_MODEL`           | `claude-opus-5-5` | Claude model used for generation                                        |
+| `LOG_LEVEL`                 | `info`            | API log level (`fatal` … `trace`, `silent`)                             |
+| `MOCK_GENERATION_STEP_MS`   | `2500`            | Duration of each of the mock generator's four steps                     |
+| `MOCK_GENERATION_FAIL_RATE` | `0`               | Share of mock generations that fail (0–1); `1` shows the failure screen |
+| `WEB_PORT`                  | `5173`            | Host port for the web app                                               |
+| `API_PORT`                  | `4000`            | Host port for the API (localhost only)                                  |
+| `DB_PORT`                   | `54320`           | Host port for PostgreSQL (localhost only)                               |
 
-`NODE_ENV`, `PORT` and `DATABASE_URL` are set in `docker-compose.yml`. The API validates its whole environment at startup and exits with a readable message if anything is invalid.
+`NODE_ENV`, `PORT`, `DATABASE_URL` and `UPLOAD_DIR` (uploaded PDFs, in the `uploads` volume) are set in `docker-compose.yml`. The API validates its whole environment at startup and exits with a readable message if anything is invalid.
 
 ## Project structure
 
@@ -81,16 +83,21 @@ apps/
       server.ts             process entry: config → logger → DB → HTTP server, graceful shutdown
       app.ts                createApp(): middleware, /api routes, 404, error handler
       config/               environment validation (Zod)
-      db/                   Prisma client (node-postgres driver adapter), DB ping
+      db/                   Prisma client (node-postgres driver adapter), DB ping, repositories wiring
       http/                 Express wiring: router (composition root), middleware
-      modules/<domain>/     routes → service → repository (+ mapper) per domain
+      modules/<domain>/     routes → service → repository (+ mapper) per domain:
+                            cvs, source-documents (PDF upload), generation (jobs, worker, mock)
+      integrations/         storage (uploaded files on disk), extraction (PDF → text with unpdf)
       lib/                  logger, error types
+      test/                 in-memory repositories and app harness for tests
       generated/prisma/     generated Prisma client (git-ignored)
   web/                      React SPA (Vite)
     src/
       app/                  router, layout, route error boundary
-      features/<feature>/   UI + data hooks per feature (health, cvs)
-      lib/                  API client, query client
+      features/cvs/         dashboard (My CVs), create (the form), status (generation progress)
+      ui/                   shared pieces from the design: status chips, state panels, CV thumbnail, icons
+      styles/               design tokens and base/component CSS (from the design canvas)
+      lib/                  API client (incl. upload with progress), query client, formatting
 packages/
   shared/                   types and Zod schemas shared by web and api (DTOs, error shape, enums)
 docker-compose.yml          db + api + web for local development
@@ -127,6 +134,23 @@ Errors are handled in one place. Every error response has the shape `{ error: { 
 - `AppError` subclasses → their own status
 - anything else → a logged `500 INTERNAL_ERROR` that doesn't leak internals
 
+### REST API
+
+Everything below `/api/health` acts on behalf of the current user; another user's CV or job answers 404.
+
+| Method and path                         | Purpose                                                                     |
+| --------------------------------------- | --------------------------------------------------------------------------- |
+| `GET /api/cvs`                          | The user's CVs with their status (`draft`, `generating`, `failed`, `ready`) |
+| `POST /api/cvs`                         | Create a draft `{ targetRole?, sourceText? }`                               |
+| `GET /api/cvs/:cvId`                    | A CV with its sources and latest generation                                 |
+| `PATCH /api/cvs/:cvId`                  | Save the target role and/or the free-text source (`""`/`null` clears)       |
+| `PUT /api/cvs/:cvId/source-document`    | Upload the source PDF (multipart field `file`); replaces the previous one   |
+| `DELETE /api/cvs/:cvId/source-document` | Remove the source PDF                                                       |
+| `POST /api/cvs/:cvId/generations`       | Start generation → `202` + `Location`; `409` while one is running           |
+| `GET /api/generation-jobs/:jobId`       | A generation's status and current step, for polling                         |
+
+Uploads are checked before anything is stored: CV ownership (before the body is read), size (10 MB), type (declared type and the `%PDF-` signature), page count (20) and readable text. Files are stored under keys the API generates; the client's file name is only displayed.
+
 ### Users and ownership
 
 Authentication is out of scope for now. The `currentUser` middleware takes a resolver function, and the current resolver always returns a demo user that the API upserts at startup. Every route below `/api/health` goes through this middleware, and adding real auth later means replacing only the resolver.
@@ -144,9 +168,9 @@ erDiagram
   cvs ||--o{ generation_jobs : "generated by"
   cvs ||--o{ source_documents : "built from"
   users { uuid id  text email }
-  cvs { uuid id  uuid user_id  text title  text target_role  text job_description  jsonb content  int content_version }
-  generation_jobs { uuid id  uuid cv_id  uuid user_id  enum status  jsonb input  jsonb result  int attempts  timestamptz heartbeat_at }
-  source_documents { uuid id  uuid cv_id  uuid user_id  text original_name  text storage_key  text extracted_text }
+  cvs { uuid id  uuid user_id  text title  text target_role  text job_description  text source_text  jsonb content  int content_version }
+  generation_jobs { uuid id  uuid cv_id  uuid user_id  enum status  int progress_step  jsonb input  jsonb result  int attempts  timestamptz heartbeat_at }
+  source_documents { uuid id  uuid cv_id  uuid user_id  text original_name  int page_count  text storage_key  text extracted_text }
 ```
 
 - **CV content** is a structured JSON document stored on the CV, because it is always read and written together with its CV. It will be validated against a shared Zod schema before every write. `content_version` provides optimistic locking, so an AI result can't silently overwrite a user's edits.
@@ -156,7 +180,7 @@ erDiagram
 
 ### CV generation as a persistent job
 
-Generation is modeled in the database now. It will be implemented in a later step without a queue service:
+Generation runs without a queue service. The worker and the job lifecycle are implemented; the generator itself is still a mock (`modules/generation/mock-cv-generator.ts`), which the Claude generator will replace:
 
 ```mermaid
 stateDiagram-v2
@@ -171,7 +195,7 @@ stateDiagram-v2
 
 1. The API stores the job and immediately responds `202 Accepted`. Nothing depends on the browser request staying open.
 2. A worker inside the API process claims queued jobs from PostgreSQL with `SELECT … FOR UPDATE SKIP LOCKED` and updates `heartbeat_at` while it runs. If the process dies, jobs with a stale heartbeat are re-queued or failed.
-3. The client polls `GET /api/generation-jobs/:id`, or leaves and checks later. The database is the source of truth for job state.
+3. The client polls `GET /api/generation-jobs/:id`, or leaves and checks later. The database is the source of truth for job state. On shutdown (including `tsx watch` restarts) the worker hands its job back to the queue; every write a worker makes is fenced by the job's attempt number, so a job taken over after going stale can't be overwritten by the old run.
 4. LLM output is never trusted. Claude is called with a structured-output schema, and the response is validated again with Zod before anything is saved. Invalid output fails the job.
 
 ## Decisions and trade-offs
@@ -195,8 +219,8 @@ stateDiagram-v2
 ## Roadmap
 
 1. ~~Foundation: monorepo, Docker, database schema, API and web shells~~
-2. Document upload and text extraction
-3. AI CV generation: worker, Claude structured output, validation
+2. ~~Document upload and text extraction~~
+3. AI CV generation: ~~persistent jobs and worker~~ (mock generator for now), Claude structured output, validation
 4. CV editor UI
 5. PDF export
 6. Authentication
