@@ -1,6 +1,13 @@
-import { type CvContent, GENERATION_STEP_COUNT, type GenerationIssue } from '@cv-builder/shared';
+import {
+  type AnswerOutcome,
+  type CvContent,
+  CvContentSchema,
+  GENERATION_STEP_COUNT,
+  type GenerationIssue,
+} from '@cv-builder/shared';
 import type { PrismaClient } from '../../db/prisma';
 import type { Prisma } from '../../generated/prisma/client';
+import type { AnswerResolution } from './answers/answer-changes';
 import { JOB_FAILURES } from './generation.failures';
 import type { GenerationInput } from './generation.input';
 
@@ -35,6 +42,8 @@ export interface GenerationDraft {
 
 export type StartJobResult =
   | { kind: 'not_found' }
+  /** The CV already has content: generating again would overwrite the person's edits. */
+  | { kind: 'already_generated' }
   | { kind: 'busy'; jobId: string }
   | { kind: 'created'; job: GenerationJobRecord };
 
@@ -48,12 +57,29 @@ export interface JobLease {
   attempts: number;
 }
 
-export interface ClaimedJob extends JobLease {
+export type ClaimedJob = JobLease & {
   cvId: string;
   userId: string;
-  /** Unvalidated JSON; the worker parses it with `GenerationInputSchema`. */
+  /** Unvalidated JSON; the worker parses it with the input schema of the job's kind. */
   input: unknown;
-}
+} & (
+    | { kind: 'GENERATE' }
+    | {
+        kind: 'APPLY_ANSWER';
+        questionId: string;
+        /** The CV's content when the job was claimed (unvalidated): what the answer builds on. */
+        base: unknown;
+      }
+  );
+
+/** How `completeAnswer` ended. */
+export type CompleteAnswerResult = 'completed' | 'invalid' | 'lost';
+
+/**
+ * Serialises claims across workers, so the check that no other answer to the same CV is in
+ * progress can't race. Claims take a millisecond; jobs run outside the lock.
+ */
+const CLAIM_LOCK = 734_501;
 
 /** Why a job failed (see `JOB_FAILURES`). */
 export interface JobFailure {
@@ -93,15 +119,10 @@ export function createGenerationRepository(prisma: PrismaClient) {
           SELECT id FROM cvs WHERE id = ${cvId}::uuid AND user_id = ${userId}::uuid FOR UPDATE`;
         if (locked.length === 0) return { kind: 'not_found' } as const;
 
-        const active = await tx.generationJob.findFirst({
-          where: { cvId, userId, status: { in: ['PENDING', 'PROCESSING'] } },
-          select: { id: true },
-        });
-        if (active) return { kind: 'busy', jobId: active.id } as const;
-
         const cv = await tx.cv.findUniqueOrThrow({
           where: { id_userId: { id: cvId, userId } },
           select: {
+            contentVersion: true,
             targetRole: true,
             sourceText: true,
             sourceDocuments: {
@@ -111,6 +132,15 @@ export function createGenerationRepository(prisma: PrismaClient) {
             },
           },
         });
+        // Content exists from version 1 on.
+        if (cv.contentVersion > 0) return { kind: 'already_generated' } as const;
+
+        const active = await tx.generationJob.findFirst({
+          where: { cvId, userId, kind: 'GENERATE', status: { in: ['PENDING', 'PROCESSING'] } },
+          select: { id: true },
+        });
+        if (active) return { kind: 'busy', jobId: active.id } as const;
+
         const input = buildInput({
           targetRole: cv.targetRole,
           sourceText: cv.sourceText,
@@ -150,12 +180,22 @@ export function createGenerationRepository(prisma: PrismaClient) {
       return { requeued: requeued.count, failed: failed.count };
     },
 
-    /** Claims the oldest pending job. Concurrent workers skip rows another worker has locked. */
+    /**
+     * Claims the next pending job: answers first (they take seconds, generations a minute), then
+     * the oldest. Answers to the same CV run one at a time, each building on the one before, so an
+     * answer job waits while another answer to its CV is in progress.
+     */
     claimNext(): Promise<ClaimedJob | null> {
       return prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(${CLAIM_LOCK}::bigint)`;
         const [next] = await tx.$queryRaw<{ id: string }[]>`
-          SELECT id FROM generation_jobs WHERE status = 'PENDING'
-          ORDER BY created_at, id LIMIT 1 FOR UPDATE SKIP LOCKED`;
+          SELECT j.id FROM generation_jobs j
+          WHERE j.status = 'PENDING'
+            AND NOT (j.kind = 'APPLY_ANSWER' AND EXISTS (
+              SELECT 1 FROM generation_jobs p
+              WHERE p.cv_id = j.cv_id AND p.kind = 'APPLY_ANSWER' AND p.status = 'PROCESSING'))
+          ORDER BY (j.kind = 'APPLY_ANSWER') DESC, j.created_at, j.id
+          LIMIT 1 FOR UPDATE SKIP LOCKED`;
         if (!next) return null;
 
         const now = new Date();
@@ -168,15 +208,27 @@ export function createGenerationRepository(prisma: PrismaClient) {
             startedAt: now,
             heartbeatAt: now,
           },
-          select: { id: true, attempts: true, cvId: true, userId: true, input: true },
+          select: {
+            id: true,
+            attempts: true,
+            cvId: true,
+            userId: true,
+            input: true,
+            kind: true,
+            questionId: true,
+            cv: { select: { content: true } },
+          },
         });
-        return {
+        const claimed = {
           jobId: job.id,
           attempts: job.attempts,
           cvId: job.cvId,
           userId: job.userId,
           input: job.input,
         };
+        return job.kind === 'APPLY_ANSWER' && job.questionId
+          ? { ...claimed, kind: 'APPLY_ANSWER', questionId: job.questionId, base: job.cv.content }
+          : { ...claimed, kind: 'GENERATE' };
       });
     },
 
@@ -190,8 +242,8 @@ export function createGenerationRepository(prisma: PrismaClient) {
     },
 
     /**
-     * Completes the job with its validated result and issues, and saves the result as the CV's
-     * content, in one transaction.
+     * Completes a generation with its validated result and issues, in one transaction: the result
+     * becomes the CV's content, and the issues its open questions.
      */
     succeed(lease: JobLease, content: CvContent, issues: GenerationIssue[]): Promise<boolean> {
       return prisma.$transaction(async (tx) => {
@@ -217,7 +269,85 @@ export function createGenerationRepository(prisma: PrismaClient) {
           where: { id_userId: { id: job.cvId, userId: job.userId } },
           data: { content, contentVersion: { increment: 1 } },
         });
+        await tx.cvQuestion.createMany({
+          data: issues.map((issue, position) => ({
+            cvId: job.cvId,
+            userId: job.userId,
+            position,
+            section: issue.section,
+            kind: issue.kind,
+            target: issue.target,
+            itemId: issue.itemId ?? null,
+            question: issue.question,
+            why: issue.why,
+          })),
+        });
         return true;
+      });
+    },
+
+    /**
+     * Completes an answer job, in one transaction with the CV's row locked: `resolve` sees the CV
+     * as it is now and decides what the answer does to it. Its content is written (and its version
+     * bumped) only if something changed. The question becomes ANSWERED, or OPEN again with a
+     * follow-up, unless the person dismissed it meanwhile.
+     *
+     * `invalid`: nothing was written and the job is still the caller's to fail. `lost`: another run
+     * took the job over.
+     */
+    async completeAnswer(
+      lease: JobLease,
+      resolve: (current: CvContent) => AnswerResolution,
+    ): Promise<CompleteAnswerResult> {
+      return prisma.$transaction(async (tx) => {
+        const job = await tx.generationJob.findUnique({
+          where: { id: lease.jobId },
+          select: { cvId: true, userId: true, questionId: true },
+        });
+        if (!job?.questionId) return 'lost';
+
+        // The CV's row first, as every other writer of content and questions locks it.
+        const [cv] = await tx.$queryRaw<{ content: unknown }[]>`
+          SELECT content FROM cvs WHERE id = ${job.cvId}::uuid FOR UPDATE`;
+        const current = CvContentSchema.safeParse(cv?.content);
+        if (!current.success) return 'invalid';
+
+        const resolution = resolve(current.data);
+        if (resolution.kind === 'invalid') return 'invalid';
+
+        const applied = resolution.kind === 'content' ? resolution.applied : [];
+        const outcome: AnswerOutcome =
+          resolution.kind === 'follow_up'
+            ? 'needs_more_info'
+            : applied.length > 0
+              ? 'updated'
+              : 'no_change';
+        const now = new Date();
+        const { count } = await tx.generationJob.updateMany({
+          where: held(lease),
+          data: {
+            status: 'COMPLETED',
+            result: { outcome, applied },
+            heartbeatAt: now,
+            finishedAt: now,
+          },
+        });
+        if (count === 0) return 'lost';
+
+        if (resolution.kind === 'content' && applied.length > 0) {
+          await tx.cv.update({
+            where: { id_userId: { id: job.cvId, userId: job.userId } },
+            data: { content: resolution.content, contentVersion: { increment: 1 } },
+          });
+        }
+        await tx.cvQuestion.updateMany({
+          where: { id: job.questionId, status: { not: 'DISMISSED' } },
+          data:
+            resolution.kind === 'follow_up'
+              ? { status: 'OPEN', followUp: resolution.followUp }
+              : { status: 'ANSWERED', followUp: null },
+        });
+        return 'completed';
       });
     },
 

@@ -24,9 +24,12 @@ export function EditCvPage() {
   if (!cv) {
     return <main className="page-main is-form" aria-busy="true" />;
   }
-  // While it generates, or once it's done, the CV's page is its status screen.
-  if (cv.status === 'generating' || cv.status === 'ready') {
+  // While it generates, the CV's page is its status screen; once it's done, the editor.
+  if (cv.status === 'generating') {
     return <Navigate to={`/cvs/${cv.id}`} replace />;
+  }
+  if (cv.status === 'ready') {
+    return <Navigate to={`/cvs/${cv.id}/editor`} replace />;
   }
   return <CvFormPage key={cv.id} initial={cv} />;
 }

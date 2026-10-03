@@ -18,6 +18,13 @@ export const ERROR_CODES = [
   // CV generation
   'CV_NOT_READY',
   'GENERATION_IN_PROGRESS',
+  'CV_ALREADY_GENERATED',
+  // Editing
+  'CV_NOT_GENERATED',
+  'CONTENT_CONFLICT',
+  // Questions
+  'QUESTION_BUSY',
+  'QUESTION_CLOSED',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

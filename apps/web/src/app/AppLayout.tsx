@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router';
 import { useCurrentUser } from '../features/auth/api';
+import { hasUnsavedEdits } from '../features/editor/editor-session';
 import { AppHeader } from './AppHeader';
 import { UserMenu } from './UserMenu';
 import './layout.css';
@@ -17,6 +18,16 @@ export function AppLayout() {
     setMenuOpenOn(null);
   }
   const menuOpen = menuOpenOn === location.key;
+
+  // Closing the tab while CV edits are still unsaved (anywhere in the app: saves carry on after
+  // leaving the editor) makes the browser ask first.
+  useEffect(() => {
+    const warn = (event: BeforeUnloadEvent) => {
+      if (hasUnsavedEdits()) event.preventDefault();
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, []);
   const setMenuOpen = (open: boolean) => setMenuOpenOn(open ? location.key : null);
 
   return (

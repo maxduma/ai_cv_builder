@@ -3,13 +3,16 @@ import { createApp } from './app';
 import { type Config, InvalidEnvError, parseEnv } from './config/env';
 import { createPrismaClient, pingDatabase } from './db/prisma';
 import { createRepositories } from './db/repositories';
-import { createClaudeClient } from './integrations/ai/claude-client';
+import { type ClaudeClient, createClaudeClient } from './integrations/ai/claude-client';
 import { createUnpdfTextExtractor } from './integrations/extraction/unpdf-pdf-text-extractor';
 import { createLocalFileStorage } from './integrations/storage/local-file-storage';
 import { createLogger, type Logger } from './lib/logger';
 import { createPasswordHasher } from './modules/auth/password-hasher';
 import { createSessionResolver } from './modules/auth/session-resolver';
 import { createSessionTokens } from './modules/auth/session-tokens';
+import type { AnswerUpdater } from './modules/generation/answers/answer-input';
+import { createMockAnswerUpdater } from './modules/generation/answers/mock-answer-updater';
+import { createClaudeAnswerUpdater } from './modules/generation/claude/claude-answer-updater';
 import { createClaudeCvGenerator } from './modules/generation/claude/claude-cv-generator';
 import type { CvGenerator } from './modules/generation/cv-generator';
 import { createGenerationWorker } from './modules/generation/generation.worker';
@@ -19,19 +22,31 @@ const SHUTDOWN_TIMEOUT_MS = 10_000;
 const PDF_PARSE_TIMEOUT_MS = 15_000;
 
 /**
- * Claude writes the CVs. Without an API key, which only development allows (see config/env.ts),
- * a mock stands in so the rest of the app can still be used.
+ * Claude writes the CVs and applies answers to them. Without an API key, which only development
+ * allows (see config/env.ts), mocks stand in so the rest of the app can still be used.
  */
-function createCvGenerator(config: Config, logger: Logger): CvGenerator {
+function createAi(
+  config: Config,
+  logger: Logger,
+): { generator: CvGenerator; answerUpdater: AnswerUpdater } {
   const { apiKey, model } = config.anthropic;
   if (!apiKey) {
-    logger.warn('ANTHROPIC_API_KEY is not set: CV generation uses the development mock');
-    return createMockCvGenerator(config.mockGeneration);
+    logger.warn('ANTHROPIC_API_KEY is not set: CVs and answers use the development mocks');
+    return {
+      generator: createMockCvGenerator(config.mockGeneration),
+      answerUpdater: createMockAnswerUpdater(config.mockGeneration),
+    };
   }
-  logger.info({ model }, 'CV generation uses Claude');
-  return createClaudeCvGenerator({
-    client: createClaudeClient({ apiKey, model, logger: logger.child({ module: 'claude' }) }),
+  logger.info({ model }, 'CVs and answers use Claude');
+  const client: ClaudeClient = createClaudeClient({
+    apiKey,
+    model,
+    logger: logger.child({ module: 'claude' }),
   });
+  return {
+    generator: createClaudeCvGenerator({ client }),
+    answerUpdater: createClaudeAnswerUpdater({ client }),
+  };
 }
 
 async function main(): Promise<void> {
@@ -65,10 +80,10 @@ async function main(): Promise<void> {
     }),
   });
 
-  // CV generation runs in this process; the jobs themselves live in PostgreSQL.
+  // AI jobs (generations and answers) run in this process; the jobs themselves live in PostgreSQL.
   const worker = createGenerationWorker({
     repository: repositories.generation,
-    generator: createCvGenerator(config, logger),
+    ...createAi(config, logger),
     logger: logger.child({ module: 'generation-worker' }),
     jobTimeoutMs: config.generation.timeoutMs,
   });

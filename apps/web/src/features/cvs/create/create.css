@@ -782,26 +782,6 @@
   white-space: nowrap;
 }
 
-@keyframes cvb-fade-up {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@keyframes cvb-bar-in {
-  from {
-    transform: translateY(100%);
-  }
-  to {
-    transform: none;
-  }
-}
-
 /* ---------- responsive ---------- */
 @media (max-width: 1023px) {
   .create-grid {

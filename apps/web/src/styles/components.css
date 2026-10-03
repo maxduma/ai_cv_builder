@@ -78,6 +78,26 @@
   width: 100%;
 }
 
+.btn-sm {
+  height: 32px;
+  padding: 0 11px;
+  border-radius: 9px;
+  font-size: 13px;
+}
+
+.btn-primary.btn-sm {
+  padding: 0 12px;
+}
+
+.btn-sm .spinner {
+  width: 14px;
+  height: 14px;
+}
+
+.btn[aria-busy='true'] {
+  cursor: progress;
+}
+
 .btn-primary {
   padding: 0 16px 0 14px;
   background: linear-gradient(
@@ -288,14 +308,12 @@
 }
 
 .icon-btn {
-  position: absolute;
-  top: 4px;
-  right: 4px;
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   padding: 0;
   border: 0;
   border-radius: 8px;
@@ -319,6 +337,21 @@
 
 .icon-btn svg {
   display: block;
+}
+
+/* Inside a field (clear, show password): sits over the input's right edge. */
+.control > .icon-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 36px;
+  height: 36px;
+}
+
+/* Removes a row (a link, a bullet): turns red on hover. */
+.icon-btn.is-del:hover {
+  background: var(--danger-tint);
+  color: var(--danger-ink);
 }
 
 .hint {
@@ -382,6 +415,18 @@
   .input,
   .textarea {
     font-size: 16px;
+  }
+
+  /* Touch targets. */
+  .btn-sm {
+    height: 44px;
+    padding: 0 14px;
+    font-size: 14px;
+  }
+
+  .icon-btn {
+    width: 44px;
+    height: 44px;
   }
 }
 

@@ -101,6 +101,27 @@ a {
   }
 }
 
+@keyframes cvb-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Bottom bars on small screens slide up into place. */
+@keyframes cvb-bar-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+
 @keyframes cvb-blink {
   0%,
   100% {

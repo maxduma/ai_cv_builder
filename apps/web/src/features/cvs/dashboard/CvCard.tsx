@@ -28,7 +28,12 @@ export function CvCard({ cv, index, now }: { cv: CvSummary; index: number; now: 
               <time dateTime={cv.updatedAt}>Updated {formatRelativeTime(cv.updatedAt, now)}</time>
             </p>
           </div>
-          <Link to={`/cvs/${cv.id}`} className="cv-open" aria-label={`Open ${cv.title}`}>
+          <Link
+            // A finished CV opens in the editor; the others on their status page or form.
+            to={cv.status === 'ready' ? `/cvs/${cv.id}/editor` : `/cvs/${cv.id}`}
+            className="cv-open"
+            aria-label={`Open ${cv.title}`}
+          >
             <span>Open</span>
             <ArrowRightIcon className="cv-arrow" />
           </Link>

@@ -1,9 +1,11 @@
 import { createBrowserRouter } from 'react-router';
 import { LoginPage } from '../features/auth/LoginPage';
 import { SignUpPage } from '../features/auth/SignUpPage';
+import { ClarifyPage } from '../features/clarify/ClarifyPage';
 import { CreateCvPage, EditCvPage } from '../features/cvs/create/CreateCvPage';
 import { CvListPage } from '../features/cvs/dashboard/CvListPage';
 import { CvStatusPage } from '../features/cvs/status/CvStatusPage';
+import { CvEditorPage } from '../features/editor/CvEditorPage';
 import { NotFoundPage } from '../pages/NotFoundPage';
 import { AppLayout } from './AppLayout';
 import { GuestOnly } from './GuestOnly';
@@ -40,6 +42,9 @@ export const router = createBrowserRouter([
                   { path: 'cvs/:cvId', element: <CvStatusPage /> },
                   // The form again, for a draft or after a failed generation.
                   { path: 'cvs/:cvId/edit', element: <EditCvPage /> },
+                  // After generation: the AI's questions, then the editor.
+                  { path: 'cvs/:cvId/questions', element: <ClarifyPage /> },
+                  { path: 'cvs/:cvId/editor', element: <CvEditorPage /> },
                   { path: '*', element: <NotFoundPage /> },
                 ],
               },

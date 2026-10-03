@@ -1,0 +1,550 @@
+/* The CV editor's page: its bar, the two-column layout, the questions card, the undo toast and
+   the small-screen status bar. The sections and the preview have their own files. */
+
+/* ---------- editor bar (sticky under the app header) ---------- */
+.ed-bar {
+  position: sticky;
+  top: calc(61px + env(safe-area-inset-top, 0px));
+  z-index: 30;
+  background: rgba(247, 247, 249, 0.86);
+  -webkit-backdrop-filter: saturate(180%) blur(14px);
+  backdrop-filter: saturate(180%) blur(14px);
+  border-bottom: 1px solid var(--line);
+}
+
+.ed-bar-in {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: 1376px;
+  height: 56px;
+  margin: 0 auto;
+  padding: 0 32px;
+}
+
+.ed-bar .back-link {
+  height: 30px;
+  margin: 0 0 0 -8px;
+  white-space: nowrap;
+}
+
+.ed-bar .back-link svg {
+  display: block;
+  flex-shrink: 0;
+  transition: transform var(--dur-base) var(--ease-out);
+}
+
+.ed-bar .back-link:hover svg {
+  transform: translateX(-2px);
+}
+
+.ed-sep {
+  display: block;
+  width: 1px;
+  height: 20px;
+  background: var(--line-2);
+}
+
+.ed-doc {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.ed-doc-title {
+  overflow: hidden;
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Save status: "Saving…" → "Saved", or the save that failed with a way to try again. */
+.ed-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.ed-save svg {
+  display: block;
+  color: var(--success);
+}
+
+.ed-save .spinner {
+  width: 12px;
+  height: 12px;
+  border-width: 1.75px;
+  color: var(--faint);
+}
+
+.ed-net {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--warning-ink);
+  font-weight: 550;
+}
+
+.ed-save .ed-net svg {
+  color: var(--warning-ink);
+}
+
+.ed-net-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ed-retry {
+  flex-shrink: 0;
+  height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: color-mix(in oklab, var(--accent) 86%, #000);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 550;
+  cursor: pointer;
+}
+
+.ed-retry:hover {
+  background: color-mix(in oklab, var(--accent) 7%, transparent);
+}
+
+.ed-retry:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ---------- layout ---------- */
+.ed-main {
+  max-width: 1376px;
+  margin: 0 auto;
+  padding: 24px 32px 96px;
+}
+
+.ed-grid {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 560px;
+  align-items: start;
+  gap: 32px;
+}
+
+.ed-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.sec-nav {
+  position: sticky;
+  top: calc(117px + env(safe-area-inset-top, 0px));
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: -8px 0 0;
+  padding: 8px 0;
+  overflow-x: auto;
+  background: linear-gradient(180deg, rgba(247, 247, 249, 0.96) 70%, rgba(247, 247, 249, 0));
+  scrollbar-width: none;
+}
+
+.sec-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.sec-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  height: 30px;
+  padding: 0 11px;
+  border-radius: 999px;
+  color: var(--text-3);
+  font-size: 13px;
+  font-weight: 550;
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    background-color var(--dur-fast) ease,
+    color var(--dur-fast) ease;
+}
+
+.sec-link:hover {
+  background: rgba(17, 17, 26, 0.055);
+  color: var(--ink);
+}
+
+.sec-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ---------- the AI's question waiting in the editor ---------- */
+.ask-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 16px 14px;
+  border: 1px solid color-mix(in oklab, var(--accent) 22%, rgba(17, 17, 26, 0.08));
+  border-radius: var(--r-xl);
+  background: linear-gradient(180deg, color-mix(in oklab, var(--accent) 6%, #fff), #fff 72%);
+  box-shadow: var(--sh-sm);
+  animation: cvb-rise 520ms var(--ease-out) backwards;
+}
+
+.ask-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.ask-ico {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: color-mix(in oklab, var(--accent) 12%, #fff);
+  color: color-mix(in oklab, var(--accent) 86%, #000);
+}
+
+.ask-ico svg {
+  display: block;
+}
+
+.ask-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.ask-kicker {
+  color: color-mix(in oklab, var(--accent) 80%, #000);
+  font-size: 12px;
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.ask-title {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.35;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.ask-head .icon-btn {
+  margin: -4px -4px 0 0;
+}
+
+/* The free-text answer takes the place of the design's answer chips. */
+.ask-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-left: 42px;
+}
+
+.ask-body .input {
+  height: 40px;
+  font-size: 14.5px;
+}
+
+.ask-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-left: 42px;
+}
+
+.ask-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.ask-note.is-hint {
+  color: var(--warning-ink);
+  font-weight: 550;
+}
+
+/* While an answer is being applied: a quiet status in the card that ran it. */
+.ask-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--text-2);
+  font-size: 13.5px;
+  line-height: 1.45;
+  font-weight: 500;
+}
+
+.ask-status .spinner {
+  width: 14px;
+  height: 14px;
+  color: color-mix(in oklab, var(--accent) 86%, #000);
+}
+
+.ask-ref {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- undo toast ---------- */
+.toast-region {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 24px;
+  z-index: 60;
+  display: flex;
+  justify-content: center;
+  padding: 0 16px;
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 520px;
+  min-height: 44px;
+  padding: 6px 6px 6px 12px;
+  border-radius: 12px;
+  background: #17171c;
+  color: #e9e9ee;
+  box-shadow:
+    0 20px 44px -16px rgba(10, 10, 16, 0.55),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+  animation: cvb-toast-in var(--dur-slow) var(--ease-menu) both;
+}
+
+.toast-ico {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #c9c9d3;
+}
+
+.toast-ico svg {
+  display: block;
+}
+
+.toast-text {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toast-btn {
+  flex-shrink: 0;
+  height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) ease;
+}
+
+.toast-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.toast-btn:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 1px;
+}
+
+@keyframes cvb-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---------- small-screen status bar ---------- */
+.ed-mbar {
+  display: none;
+}
+
+/* ---------- responsive ---------- */
+@media (max-width: 1279px) {
+  .ed-grid {
+    grid-template-columns: minmax(0, 1fr) 440px;
+    gap: 24px;
+  }
+}
+
+@media (max-width: 1023px) {
+  .ed-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ed-bar .ed-save {
+    display: none;
+  }
+
+  /* Room for the fixed status bar. */
+  .ed-main {
+    padding-bottom: 120px;
+  }
+
+  .ed-mbar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+    display: block;
+    padding: 12px 32px calc(12px + env(safe-area-inset-bottom, 0px));
+    background: rgba(255, 255, 255, 0.9);
+    -webkit-backdrop-filter: saturate(180%) blur(16px);
+    backdrop-filter: saturate(180%) blur(16px);
+    border-top: 1px solid var(--line);
+    animation: cvb-bar-in 420ms var(--ease-out) both;
+  }
+
+  .ed-mbar-in {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    max-width: 960px;
+    min-height: 32px;
+    margin: 0 auto;
+  }
+
+  .ed-mbar .ed-save {
+    min-width: 0;
+    margin-left: 0;
+    overflow: hidden;
+  }
+
+  .toast-region {
+    bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media (max-width: 599px) {
+  .ed-bar {
+    top: calc(57px + env(safe-area-inset-top, 0px));
+  }
+
+  .ed-bar-in {
+    height: 52px;
+    padding: 0 16px;
+    gap: 10px;
+  }
+
+  .ed-bar .back-link span,
+  .ed-bar .chip {
+    display: none;
+  }
+
+  .ed-bar .back-link {
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    margin-left: -6px;
+    padding: 0;
+  }
+
+  .ed-main {
+    padding: 16px 16px 132px;
+  }
+
+  .sec-nav {
+    display: none;
+  }
+
+  .ask-card {
+    padding: 14px;
+  }
+
+  .ask-body,
+  .ask-foot {
+    padding-left: 0;
+  }
+
+  .ask-body .input {
+    height: 44px;
+    font-size: 16px;
+  }
+
+  .ed-mbar {
+    padding: 10px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .ed-retry {
+    height: 44px;
+  }
+
+  .toast {
+    width: 100%;
+    padding: 6px 6px 6px 14px;
+  }
+
+  .toast-btn {
+    height: 44px;
+    padding: 0 16px;
+  }
+
+  .toast-region {
+    bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* Focus moves to the card itself only when it has nothing else to focus (while it updates). */
+.ask-card:focus {
+  outline: none;
+}

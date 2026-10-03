@@ -1,5 +1,11 @@
-import type { CreateCvRequest, UpdateCvRequest } from '@cv-builder/shared';
-import { NotFoundError } from '../../lib/errors';
+import {
+  type ContentConflictDetails,
+  type CreateCvRequest,
+  contentEditIssues,
+  type CvContent,
+  type UpdateCvRequest,
+} from '@cv-builder/shared';
+import { AppError, NotFoundError } from '../../lib/errors';
 import type { CvChanges, CvsRepository } from './cvs.repository';
 
 /** CVs are named after their target role until renaming exists. */
@@ -50,6 +56,40 @@ export function createCvsService(cvs: CvsRepository) {
         throw new NotFoundError('CV not found');
       }
       return cv;
+    },
+
+    /**
+     * Saves the edited content over version `baseVersion`. The rules for what people type (see
+     * `contentEditIssues`) apply to what changed since the stored version only.
+     */
+    async saveContent(userId: string, cvId: string, content: CvContent, baseVersion: number) {
+      const result = await cvs.saveContent(userId, cvId, content, baseVersion, (stored) =>
+        contentEditIssues(stored, content),
+      );
+      switch (result.kind) {
+        case 'not_found':
+          throw new NotFoundError('CV not found');
+        case 'not_generated':
+          throw new AppError(409, 'CV_NOT_GENERATED', 'This CV has no content to edit yet');
+        case 'conflict':
+          throw new AppError(409, 'CONTENT_CONFLICT', 'The CV changed since it was loaded', {
+            content: result.content,
+            contentVersion: result.contentVersion,
+          } satisfies ContentConflictDetails);
+        case 'invalid':
+          // Shaped like the error handler's validation errors, paths as in the request body.
+          throw new AppError(
+            400,
+            'VALIDATION_ERROR',
+            'Request validation failed',
+            result.issues.map(({ path, message }) => ({
+              path: ['content', ...path].join('.'),
+              message,
+            })),
+          );
+        case 'saved':
+          return result.contentVersion;
+      }
     },
   };
 }

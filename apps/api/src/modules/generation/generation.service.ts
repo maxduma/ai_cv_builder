@@ -48,6 +48,12 @@ export function createGenerationService(generation: GenerationRepository) {
       switch (result.kind) {
         case 'not_found':
           throw new NotFoundError('CV not found');
+        case 'already_generated':
+          throw new AppError(
+            409,
+            'CV_ALREADY_GENERATED',
+            'This CV has already been generated; edit it instead',
+          );
         case 'busy':
           throw new AppError(409, 'GENERATION_IN_PROGRESS', 'This CV is already being generated', {
             jobId: result.jobId,

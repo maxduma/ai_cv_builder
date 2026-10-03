@@ -1,5 +1,6 @@
 import { createCvsRepository } from '../modules/cvs/cvs.repository';
 import { createGenerationRepository } from '../modules/generation/generation.repository';
+import { createQuestionsRepository } from '../modules/questions/questions.repository';
 import { createSourceDocumentsRepository } from '../modules/source-documents/source-documents.repository';
 import { createUsersRepository } from '../modules/users/users.repository';
 import type { PrismaClient } from './prisma';
@@ -11,6 +12,7 @@ export function createRepositories(prisma: PrismaClient) {
     cvs: createCvsRepository(prisma),
     sourceDocuments: createSourceDocumentsRepository(prisma),
     generation: createGenerationRepository(prisma),
+    questions: createQuestionsRepository(prisma),
   };
 }
 

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { CvContent } from './cv-content';
+import type { CvQuestionDto } from './cv-question';
 import type { GenerationJobDto } from './generation-job';
 import type { SourceDocumentDto } from './source-document';
 
@@ -71,6 +72,10 @@ export interface CvDetail extends CvSummary {
   latestGeneration: GenerationJobDto | null;
   /** The structured CV, once a generation has completed; validated before it was stored. */
   content: CvContent | null;
+  /** Incremented by every write of `content`; 0 until the first generation. Saves send it back. */
+  contentVersion: number;
+  /** What the AI asked about the CV, in the order it asked. */
+  questions: CvQuestionDto[];
 }
 
 export interface CvListResponse {
