@@ -34,6 +34,7 @@ List the gaps that matter most for this target role, most important first, at mo
 - achievements described without a result or scale;
 - facts the documents contradict each other on;
 - skills the target role usually needs that the source doesn't show.
+Ask neutrally. A question never presupposes a title, responsibility, tool or result the source doesn't state: ask whether the person has it ("Did you manage anyone at Northpay? If so, how many people?"), not how many people they managed.
 For each issue, the section is the part of the CV it is about (general only when no single section fits), the kind is missing, ambiguous or incomplete, and the target names the exact place, such as "Experience · Northpay" or "Contact details". When an experience or education issue is about one entry, item is that entry's position in your experience or education list, counting from 1; otherwise item is 0. The question asks for the information, and the why says in one sentence why it helps for this role. Write the target, question and why in English, whatever the language of the CV. Don't ask about anything the source already answers, and return no issues when nothing important is missing.`;
 
 /** Starts or ends one of the prompt's delimiters: `<document`, `</target_role>`, ... */

@@ -73,7 +73,7 @@ function sampleContent(input: GenerationInput): CvContent {
     contact: {
       firstName: '',
       lastName: '',
-      headline: input.targetRole,
+      headline: '',
       email: '',
       phone: '',
       location: '',

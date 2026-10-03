@@ -232,6 +232,7 @@ erDiagram
 - **Generation jobs** keep a validated snapshot of their `input`, plus their validated `result` and `issues`, which allows auditing and restoring. Replacing or removing a PDF never changes a job's snapshot.
 - **Source documents** store file metadata and the extracted text. The uploaded PDF is kept on local disk (`UPLOAD_DIR`, the `uploads` volume) under a key the API generates, and deleted when it is replaced or removed; generation only uses the extracted text.
 - IDs are UUIDv7 (time-ordered) and all timestamps are `timestamptz`.
+
 ### CV generation as a persistent job
 
 Generation runs without a queue service, inside the API process:

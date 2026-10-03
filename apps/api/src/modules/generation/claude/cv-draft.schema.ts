@@ -127,7 +127,7 @@ export const AiCvDraftSchema = z.strictObject({
         'The exact place, e.g. "Experience · Northpay" or "Contact details". In English.',
       ),
       question: issue.question.describe(
-        'A short question the person can answer to fill the gap. In English.',
+        'A short, neutral question the person can answer to fill the gap: it never presupposes a fact the sources do not state. In English.',
       ),
       why: issue.why.describe(
         'One sentence on why answering helps for the target role. In English.',

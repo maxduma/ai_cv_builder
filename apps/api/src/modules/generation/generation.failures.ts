@@ -44,7 +44,7 @@ export const JOB_FAILURES = {
   aiRequestRejected: {
     code: 'AI_REQUEST_REJECTED',
     message:
-      'The AI service couldn’t process these details. Try a shorter description or a different PDF.',
+      'The AI service rejected this request. If your description or PDF is very long, shorten it; otherwise try again later.',
   },
   aiRefused: {
     code: 'AI_REFUSED',
