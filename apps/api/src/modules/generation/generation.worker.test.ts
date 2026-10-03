@@ -17,7 +17,11 @@ import type { ContactChanges, RoleChanges } from './answers/answer-update.schema
 import { type CvGenerator, type GeneratedCv, GenerationError } from './cv-generator';
 import { JOB_FAILURES } from './generation.failures';
 import { toGenerationInput } from './generation.service';
-import { createGenerationWorker, type GenerationWorker } from './generation.worker';
+import {
+  createGenerationWorker,
+  type GenerationWorker,
+  type GenerationWorkerRepository,
+} from './generation.worker';
 import { createMockCvGenerator } from './mock-cv-generator';
 
 const USER = '0199a000-0000-7000-8000-00000000000a';
@@ -70,10 +74,18 @@ const noAnswers: AnswerUpdater = {
 type SetupOptions = Omit<
   Parameters<typeof createGenerationWorker>[0],
   'repository' | 'generator' | 'logger' | 'answerUpdater'
-> & { jobs?: number; answerUpdater?: AnswerUpdater };
+> & {
+  jobs?: number;
+  answerUpdater?: AnswerUpdater;
+  /** Wraps the repository the worker uses, e.g. to make one call fail. */
+  wrap?: (repository: GenerationWorkerRepository) => GenerationWorkerRepository;
+};
 
 /** CVs with a pending generation job each, plus a worker wired to the in-memory repository. */
-async function setup(generator: CvGenerator, { jobs = 1, ...options }: SetupOptions = {}) {
+async function setup(
+  generator: CvGenerator,
+  { jobs = 1, wrap = (repository) => repository, ...options }: SetupOptions = {},
+) {
   const { repositories, db } = createInMemoryRepositories();
   for (let index = 0; index < jobs; index += 1) {
     const cv = await repositories.cvs.create(USER, {
@@ -86,7 +98,7 @@ async function setup(generator: CvGenerator, { jobs = 1, ...options }: SetupOpti
   }
 
   const worker = createGenerationWorker({
-    repository: repositories.generation,
+    repository: wrap(repositories.generation),
     generator,
     answerUpdater: noAnswers,
     logger: silent,
@@ -177,6 +189,93 @@ describe('generation worker', () => {
 
     expect(job()).toMatchObject({ status: 'COMPLETED', issues: [] });
     expect(cvRow().content).toEqual(CONTENT);
+  });
+
+  it('drops an issue whose text the database can’t store, and keeps the rest', async () => {
+    const unstorable = { ...ISSUES[0]!, question: 'Where were you based?\u0000' };
+    const { worker, job, cvRow } = await setup(
+      scriptedGenerator({ content: CONTENT, issues: [ISSUES[0], unstorable] }),
+    );
+
+    await worker.tick();
+
+    expect(job()).toMatchObject({ status: 'COMPLETED', issues: ISSUES });
+    expect(cvRow().content).toEqual(CONTENT);
+  });
+
+  it('fails a job whose saved input no longer reads with INVALID_INPUT, without generating', async () => {
+    let generated = false;
+    const { worker, job, cvRow } = await setup({
+      async generate() {
+        generated = true;
+        return { content: CONTENT, issues: [] };
+      },
+    });
+    Object.assign(job(), { input: { targetRole: '' } });
+
+    await worker.tick();
+
+    expect(generated).toBe(false);
+    expect(job()).toMatchObject({ status: 'FAILED', errorCode: 'INVALID_INPUT' });
+    expect(cvRow().content).toBeNull();
+  });
+
+  it('keeps a generation going when reporting one of its steps fails', async () => {
+    let failed = false;
+    const { worker, job, cvRow } = await setup(
+      scriptedGenerator({ content: CONTENT, issues: [] }),
+      {
+        wrap: (repository) => ({
+          ...repository,
+          async heartbeat(lease, step) {
+            if (step === 2 && !failed) {
+              failed = true;
+              throw new Error('Connection reset');
+            }
+            return repository.heartbeat(lease, step);
+          },
+        }),
+      },
+    );
+
+    await worker.tick();
+
+    expect(failed).toBe(true);
+    expect(job()).toMatchObject({
+      status: 'COMPLETED',
+      attempts: 1,
+      progressStep: 4,
+      errorCode: null,
+    });
+    expect(cvRow().content).toEqual(CONTENT);
+  });
+
+  it('leaves a job alone while its heartbeat is fresh', async () => {
+    let markStarted!: () => void;
+    const started = new Promise<void>((resolve) => (markStarted = resolve));
+    let finish!: () => void;
+    const finished = new Promise<void>((resolve) => (finish = resolve));
+    let calls = 0;
+    const { worker, job } = await setup({
+      async generate(_input, { onStep }) {
+        calls += 1;
+        await onStep(1);
+        markStarted();
+        await finished;
+        return { content: CONTENT, issues: [] };
+      },
+    });
+
+    const first = worker.tick();
+    await started;
+    // A second round, as another loop or worker would run it, finds nothing to recover or claim.
+    expect(await worker.tick()).toBe(false);
+    expect(job()).toMatchObject({ status: 'PROCESSING', attempts: 1 });
+
+    finish();
+    await first;
+    expect(calls).toBe(1);
+    expect(job()).toMatchObject({ status: 'COMPLETED', attempts: 1 });
   });
 
   it('fails a hung job with AI_TIMEOUT at its deadline', async () => {
@@ -770,6 +869,18 @@ describe('answer jobs', () => {
       'Led a team of five engineers.',
     ]);
     expect(answerJobs()[1]).toMatchObject({ status: 'COMPLETED', result: { outcome: 'updated' } });
+  });
+
+  it('fails an answer whose saved input no longer reads with INVALID_INPUT, changing nothing', async () => {
+    const { worker, answer, cvRow, requests, answerJobs } = await setupAnswers();
+    await answer('skills', 'AWS');
+    Object.assign(answerJobs()[0]!, { input: {} });
+
+    await worker.tick();
+
+    expect(requests).toEqual([]);
+    expect(answerJobs()[0]).toMatchObject({ status: 'FAILED', errorCode: 'INVALID_INPUT' });
+    expect(cvRow().content).toEqual(DRAFT);
   });
 
   it('asks for the email itself when the AI’s email isn’t in the answer', async () => {

@@ -1,6 +1,7 @@
 import { CV_LIMITS, type CvBullet, type CvContent, type CvExperience } from '@cv-builder/shared';
 import type { KeyboardEvent } from 'react';
 import { flushSync } from 'react-dom';
+import { newId } from '../../../lib/new-id';
 import { CheckIcon, CloseIcon, SmallPlusIcon } from '../../../ui/icons';
 import type { EditorSession, Undo } from '../editor-session';
 import { type EntryKind, EntrySection, editEntry, joinParts } from './EntrySection';
@@ -19,14 +20,14 @@ const EXPERIENCE: EntryKind<CvExperience> = {
   list: (cv) => cv.experience,
   withList: (cv, experience) => ({ ...cv, experience }),
   create: () => ({
-    id: crypto.randomUUID(),
+    id: newId(),
     title: '',
     company: '',
     location: '',
     start: '',
     end: '',
     current: false,
-    bullets: [{ id: crypto.randomUUID(), text: '' }],
+    bullets: [{ id: newId(), text: '' }],
   }),
   head: (role) => {
     const dates = joinParts([role.start, role.current ? 'Present' : role.end], ' – ');
@@ -167,7 +168,7 @@ function Achievements({
   /** Adds an empty achievement after `afterId` (or at the end) and puts the caret in it. */
   function add(afterId?: string) {
     if (full) return;
-    const bullet: CvBullet = { id: crypto.randomUUID(), text: '' };
+    const bullet: CvBullet = { id: newId(), text: '' };
     flushSync(() =>
       editEntry(session, EXPERIENCE, roleId, (current) => {
         const after = current.bullets.findIndex((other) => other.id === afterId);

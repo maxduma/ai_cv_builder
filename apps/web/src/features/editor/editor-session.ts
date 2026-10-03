@@ -292,9 +292,22 @@ export function findEditorSession(cvId: string): EditorSession | undefined {
 export function claimEditorSessions(userId: string) {
   if (owner !== null && owner !== userId) clearEditorSessions();
   owner = userId;
+  retryFailedEditorSessions();
+}
+
+/** Sends the saves that failed again, e.g. once the connection is back. */
+export function retryFailedEditorSessions() {
   for (const session of sessions.values()) {
     if (session.getSnapshot().status === 'failed') session.retry();
   }
+}
+
+/**
+ * Saves every CV's waiting edits now (retrying a failed save), e.g. before logging out or when a
+ * phone puts the page in the background, where it may be closed without warning.
+ */
+export async function flushEditorSessions() {
+  await Promise.allSettled([...sessions.values()].map((session) => session.flush()));
 }
 
 /** True while any CV has edits not yet saved: leaving the page now would lose them. */

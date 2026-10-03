@@ -1,6 +1,7 @@
 import {
   type ApiErrorBody,
   type ContentConflictDetails,
+  CV_LIMITS,
   type CvContent,
   CvContentSchema,
   type CvDetail,
@@ -8,6 +9,7 @@ import {
   type GenerationIssue,
 } from '@cv-builder/shared';
 import { describe, expect, it } from 'vitest';
+import { largestCv } from '../../test/largest-cv';
 import {
   sendJson,
   startApp,
@@ -121,6 +123,21 @@ describe('POST /api/cvs', () => {
     const cv = await createCv(baseUrl, {});
 
     expect(cv).toMatchObject({ title: 'Untitled CV', targetRole: null, sourceText: null });
+  });
+
+  it.each([
+    ['a target role', { targetRole: 'x'.repeat(121) }, 'targetRole'],
+    ['notes', { sourceText: 'x'.repeat(5_001) }, 'sourceText'],
+  ])('rejects %s over the limit, creating nothing', async (_, body, path) => {
+    const { baseUrl, db } = await startApp();
+
+    const response = await sendJson(`${baseUrl}/api/cvs`, 'POST', body);
+    const { error } = (await response.json()) as ApiErrorBody;
+
+    expect(response.status).toBe(400);
+    expect(error.code).toBe('VALIDATION_ERROR');
+    expect(error.details).toEqual([expect.objectContaining({ path })]);
+    expect(db.cvs).toHaveLength(0);
   });
 
   it('never takes the owner from the request body', async () => {
@@ -253,6 +270,35 @@ describe('PATCH /api/cvs/:cvId', () => {
     expect(await untitled.json()).toMatchObject({ title: 'Untitled CV', targetRole: null });
   });
 
+  // PostgreSQL text can't hold U+0000 (the in-memory rows can, so the test checks it never arrives).
+  it.each([
+    ['POST', 'targetRole', 'Backend\u0000 Engineer', 'Backend Engineer'],
+    [
+      'POST',
+      'sourceText',
+      'Six years\u0000 with Spark and Airflow.',
+      'Six years with Spark and Airflow.',
+    ],
+    ['PATCH', 'targetRole', 'Backend\u0000 Engineer', 'Backend Engineer'],
+    [
+      'PATCH',
+      'sourceText',
+      'Six years\u0000 with Spark and Airflow.',
+      'Six years with Spark and Airflow.',
+    ],
+  ])('%s removes U+0000 from %s', async (method, field, sent, saved) => {
+    const { baseUrl, db } = await startApp();
+    const response =
+      method === 'POST'
+        ? await sendJson(`${baseUrl}/api/cvs`, 'POST', { [field]: sent })
+        : await sendJson(`${baseUrl}/api/cvs/${(await createCv(baseUrl)).id}`, 'PATCH', {
+            [field]: sent,
+          });
+
+    expect(response.ok).toBe(true);
+    expect(db.cvs[0]).toMatchObject({ [field]: saved });
+  });
+
   it('rejects text over the limit', async () => {
     const { baseUrl } = await startApp();
     const cv = await createCv(baseUrl);
@@ -325,6 +371,86 @@ describe('PUT /api/cvs/:cvId/content', () => {
       details: { content: EDITED, contentVersion: 2 } satisfies ContentConflictDetails,
     });
     expect(db.cvs[0]).toMatchObject({ content: EDITED, contentVersion: 2 });
+  });
+
+  it('refuses a base version ahead of the stored one', async () => {
+    const { save, read } = await setup();
+
+    const response = await save({ baseVersion: 7, content: EDITED });
+    const body = (await response.json()) as ApiErrorBody;
+
+    expect(response.status).toBe(409);
+    expect(body.error.code).toBe('CONTENT_CONFLICT');
+    expect(await read()).toMatchObject({ content: CONTENT, contentVersion: 1 });
+  });
+
+  it.each([
+    ['a field', 'summary', { ...CONTENT, summary: 'x'.repeat(CV_LIMITS.summary + 1) }],
+    [
+      'a list',
+      'skills',
+      {
+        ...CONTENT,
+        skills: Array.from({ length: CV_LIMITS.skills + 1 }, (_, i) => ({
+          id: `s${i}`,
+          name: 'Go',
+        })),
+      },
+    ],
+    [
+      'a list inside an entry',
+      'experience.0.bullets',
+      {
+        ...WITH_ROLE,
+        experience: [
+          {
+            ...WITH_ROLE.experience[0]!,
+            bullets: Array.from({ length: CV_LIMITS.bullets + 1 }, (_, i) => ({
+              id: `b${i}`,
+              text: 'Shipped it.',
+            })),
+          },
+        ],
+      },
+    ],
+  ])('refuses content with %s over its limit', async (_, path, content) => {
+    const { save, read } = await setup();
+
+    const response = await save({ baseVersion: 1, content });
+    const { error } = (await response.json()) as ApiErrorBody;
+
+    expect(response.status).toBe(400);
+    expect(error.details).toEqual([expect.objectContaining({ path: `content.${path}` })]);
+    expect((await read()).contentVersion).toBe(1);
+  });
+
+  it('saves the largest CV the limits allow, even in 3-byte characters', async () => {
+    const { save, read } = await setup();
+    // Letters become '中' (3 bytes in UTF-8, as many characters): the JSON is near its 1 MB limit.
+    const wide = JSON.parse(
+      JSON.stringify(largestCv(CONTENT), (key, value: unknown) =>
+        typeof value === 'string' && key !== 'id' ? value.replace(/[a-z]/g, '中') : value,
+      ),
+    ) as CvContent;
+    expect(Buffer.byteLength(JSON.stringify({ baseVersion: 1, content: wide }))).toBeGreaterThan(
+      700_000,
+    );
+
+    const response = await save({ baseVersion: 1, content: wide });
+
+    expect(response.status).toBe(200);
+    expect((await read()).content).toEqual(wide);
+  });
+
+  it('answers 500, not 400, when the stored content no longer fits the schema', async () => {
+    const { save, db } = await setup();
+    // E.g. saved before a limit was lowered: the server's fault, not the request's.
+    db.cvs[0]!.content = { ...CONTENT, summary: 'x'.repeat(CV_LIMITS.summary + 1) };
+
+    const response = await save({ baseVersion: 1, content: EDITED });
+
+    expect(response.status).toBe(500);
+    expect(((await response.json()) as ApiErrorBody).error.code).toBe('INTERNAL_ERROR');
   });
 
   it('can’t save content before the CV has been generated', async () => {

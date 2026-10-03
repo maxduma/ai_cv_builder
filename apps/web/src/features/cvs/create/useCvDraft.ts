@@ -27,6 +27,7 @@ const UPLOAD_ERRORS: Record<string, string> = {
     'This PDF has no selectable text — it looks like a scan. Upload a text-based PDF or describe your experience below.',
   PDF_UNREADABLE: 'We couldn’t read that PDF. It may be damaged or password-protected.',
   PDF_TOO_MANY_PAGES: 'That PDF is over 20 pages. Upload just your CV.',
+  PDF_TOO_MUCH_TEXT: 'That PDF has far more text than a CV. Upload just your CV.',
   NETWORK_ERROR: 'Upload failed. Check your connection and try again.',
 };
 const UPLOAD_FAILED = 'Upload failed. Try again in a moment.';
@@ -56,14 +57,18 @@ interface InFlightUpload {
   previous: SourceDocumentDto | null;
   /** All bytes reached the server, so it may have stored the file already. */
   sent: boolean;
+  /** The user removed it (✕) after it was sent: whatever it stored is deleted once it ends. */
+  cancelled: boolean;
   /** Resolves with the stored document, or `null` if the upload failed or was cancelled. */
   done: Promise<SourceDocumentDto | null>;
 }
 
 /**
  * State and actions of the "Create a new CV" form. The CV is created on the server as a draft the
- * first time it is needed (a PDF is chosen, or Generate is pressed), so uploads can start at once
- * and nothing is lost if the user leaves. `initial` is an existing draft being edited.
+ * first time it is needed (a PDF is chosen, or Generate is pressed), so uploads can start at once;
+ * from then on the page's address is the draft's, so a reload reopens it with its PDF. The role and
+ * description typed so far go with the draft when it is created; later changes are saved when
+ * Generate is pressed. `initial` is an existing draft being edited.
  */
 export function useCvDraft(initial: CvDetail | null, refs: FormRefs) {
   const queryClient = useQueryClient();
@@ -136,7 +141,11 @@ export function useCvDraft(initial: CvDetail | null, refs: FormRefs) {
         })
         .then((cv) => {
           setCvId(cv.id);
-          queryClient.setQueryData(cvKeys.detail(cv.id), cv);
+          // The form now edits this draft: a reload or Back reopens it (with its PDF) instead of
+          // starting another. Not navigate(), which would remount the form and cancel the upload.
+          if (mounted.current) {
+            window.history.replaceState(window.history.state, '', `/cvs/${cv.id}/edit`);
+          }
           void queryClient.invalidateQueries({ queryKey: cvKeys.list() });
           return cv.id;
         });
@@ -166,6 +175,7 @@ export function useCvDraft(initial: CvDetail | null, refs: FormRefs) {
       controller: new AbortController(),
       previous: pdf?.phase === 'ready' ? pdf.document : null,
       sent: false,
+      cancelled: false,
       done: new Promise((resolve) => (finish = resolve)),
     };
     upload.current = current;
@@ -193,11 +203,14 @@ export function useCvDraft(initial: CvDetail | null, refs: FormRefs) {
           );
         },
       });
-      setPdf({ phase: 'ready', document });
-      setLive(`${document.originalName} uploaded.`);
+      // A cancelled upload is removed again by `removePdf`, which also updates the card.
+      if (!current.cancelled) {
+        setPdf({ phase: 'ready', document });
+        setLive(`${document.originalName} uploaded.`);
+      }
       void queryClient.invalidateQueries({ queryKey: cvKeys.all });
     } catch (error) {
-      if (!current.controller.signal.aborted) {
+      if (!current.controller.signal.aborted && !current.cancelled) {
         const message =
           error instanceof ApiError ? (UPLOAD_ERRORS[error.code] ?? UPLOAD_FAILED) : UPLOAD_FAILED;
         // A failed replacement leaves the previous file on the server, so its card comes back.
@@ -214,27 +227,40 @@ export function useCvDraft(initial: CvDetail | null, refs: FormRefs) {
   /** ✕ on the file card: cancels the upload in flight, or removes the uploaded PDF. */
   async function removePdf() {
     const inFlight = upload.current;
-    if (inFlight) {
+    if (inFlight && !inFlight.sent) {
+      // Nothing reached the server: back to how it was.
       inFlight.controller.abort();
       upload.current = null;
-      if (!inFlight.sent) {
-        // Nothing reached the server: back to how it was.
-        setPdf(inFlight.previous ? { phase: 'ready', document: inFlight.previous } : null);
-        setLive('Upload cancelled.');
-        return;
-      }
-      // The server may have stored the file already: remove whatever it has.
+      setPdf(inFlight.previous ? { phase: 'ready', document: inFlight.previous } : null);
+      setLive('Upload cancelled.');
+      return;
     }
 
     setRemoving(true);
     setPdfError(null);
+    let stored: SourceDocumentDto | null = pdf?.phase === 'ready' ? pdf.document : null;
     try {
+      if (inFlight) {
+        // Every byte was sent, so the server finishes reading the file even if the request is
+        // aborted. Removing it before then would race that upload, which would store the file
+        // afterwards; so wait for it, then remove what it stored. The card stays until then.
+        inFlight.cancelled = true;
+        stored = await inFlight.done;
+        if (!stored) {
+          // It failed: nothing was stored, and the PDF it was replacing is still there.
+          setPdf(inFlight.previous ? { phase: 'ready', document: inFlight.previous } : null);
+          setLive('Upload cancelled.');
+          return;
+        }
+      }
       await cvsApi.removeSourceDocument(await ensureDraft());
       flushSync(() => setPdf(null));
       setLive('CV removed.');
       refs.drop.current?.focus();
       void queryClient.invalidateQueries({ queryKey: cvKeys.all });
     } catch {
+      // The card shows what the server still has, so ✕ can be pressed again.
+      setPdf(stored ? { phase: 'ready', document: stored } : null);
       setPdfError('We couldn’t remove the file. Try again.');
     } finally {
       setRemoving(false);
@@ -287,7 +313,8 @@ export function useCvDraft(initial: CvDetail | null, refs: FormRefs) {
 
   /** Generate is never disabled: it explains what's missing, or waits for an upload to finish. */
   async function generate() {
-    if (submitState !== 'idle') return;
+    // A PDF being removed must not go into the generation.
+    if (submitState !== 'idle' || removing) return;
 
     const waitingFor = upload.current;
     if (roleOk && waitingFor) {
@@ -297,7 +324,7 @@ export function useCvDraft(initial: CvDetail | null, refs: FormRefs) {
       const document = await waitingFor.done;
       setSubmitState('idle');
       // A failed or cancelled upload has already explained itself.
-      if (!document) return;
+      if (!document || waitingFor.cancelled) return;
       if (latest.current.role.trim().length < TARGET_ROLE_MIN_LENGTH) {
         revealErrors(true);
         return;

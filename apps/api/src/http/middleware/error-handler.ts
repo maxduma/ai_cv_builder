@@ -48,7 +48,33 @@ function toErrorResponse(err: unknown): ErrorResponse {
   if (hasType(err, 'entity.too.large')) {
     return { status: 413, code: 'PAYLOAD_TOO_LARGE', message: 'Request body is too large' };
   }
+  // Other requests Express couldn't read (an unsupported charset or encoding, an aborted body, a
+  // malformed %-escape in the URL) are the client's, not ours. Their messages quote the input, so
+  // they aren't passed on.
+  if (isClientRequestError(err)) {
+    return {
+      status: err.status,
+      code: 'VALIDATION_ERROR',
+      message: 'The request could not be read',
+    };
+  }
   return { status: 500, code: 'INTERNAL_ERROR', message: 'Something went wrong' };
+}
+
+/**
+ * body-parser's errors are http-errors with a 4xx `status` and `expose: true`; the router marks a
+ * malformed %-escape in a route parameter as a URIError with status 400.
+ */
+function isClientRequestError(err: unknown): err is { status: number } {
+  if (typeof err !== 'object' || err === null || !('status' in err)) return false;
+  const { status } = err;
+  const exposed = 'expose' in err && err.expose === true;
+  return (
+    typeof status === 'number' &&
+    status >= 400 &&
+    status < 500 &&
+    (exposed || err instanceof URIError)
+  );
 }
 
 function hasType(err: unknown, type: string): boolean {

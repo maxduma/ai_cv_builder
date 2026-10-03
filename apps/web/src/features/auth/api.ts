@@ -2,7 +2,15 @@ import type { AuthResponse, AuthUser, LoginRequest, SignUpRequest } from '@cv-bu
 import { type QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { ApiError, api } from '../../lib/api-client';
-import { claimEditorSessions, clearEditorSessions } from '../editor/editor-session';
+import {
+  claimEditorSessions,
+  clearEditorSessions,
+  flushEditorSessions,
+  hasUnsavedEdits,
+} from '../editor/editor-session';
+
+const UNSAVED_ON_LOGOUT =
+  'Some changes to your CV couldn’t be saved. If you log out now, they will be lost. Log out anyway?';
 
 /** Who is signed in: the user, or `null` for nobody. The session cookie itself is httpOnly. */
 export const sessionKey = ['session'] as const;
@@ -82,8 +90,16 @@ export function useLogout() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   return useMutation({
-    mutationFn: () => api.post<void>('/auth/logout'),
-    onSuccess: async () => {
+    // CV edits still waiting are saved first. If some can't be (no connection), the person decides
+    // whether to log out anyway: logging out forgets them.
+    mutationFn: async (): Promise<'done' | 'cancelled'> => {
+      await flushEditorSessions();
+      if (hasUnsavedEdits() && !window.confirm(UNSAVED_ON_LOGOUT)) return 'cancelled';
+      await api.post<void>('/auth/logout');
+      return 'done';
+    },
+    onSuccess: async (result) => {
+      if (result === 'cancelled') return;
       await queryClient.cancelQueries();
       queryClient.setQueryData<AuthUser | null>(sessionKey, null);
       await navigate('/login', { replace: true, flushSync: true });

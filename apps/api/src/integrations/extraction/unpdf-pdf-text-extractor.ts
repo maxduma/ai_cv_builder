@@ -11,7 +11,12 @@ type PdfDocument = Awaited<ReturnType<typeof getDocumentProxy>>;
 interface Options {
   /** Checked before any text is extracted. */
   maxPages: number;
-  /** pdf.js parses on the event loop (there is no worker), so a hostile file must not run long. */
+  /**
+   * pdf.js parses on the event loop (there is no worker). When the deadline passes, the document
+   * is destroyed, which stops pdf.js the next time it yields (e.g. between pages or streams). It
+   * can't interrupt one long synchronous stretch, so a crafted file can still hold the event loop
+   * for a while (see the README).
+   */
   timeoutMs: number;
 }
 
@@ -37,11 +42,12 @@ export function createUnpdfTextExtractor({ maxPages, timeoutMs }: Options): PdfT
         return { pageCount: document.numPages, text: text.replaceAll('\u0000', '') };
       };
 
-      // Free the document when parsing ends, even if the caller stopped waiting.
-      const work = parse().finally(() => void document?.loadingTask.destroy());
+      // Stops pdf.js and frees the document: when parsing ends, or at the deadline.
+      const destroy = () => void document?.loadingTask.destroy().catch(() => {});
+      const work = parse().finally(destroy);
 
       try {
-        return await withTimeout(work, timeoutMs);
+        return await withTimeout(work, timeoutMs, destroy);
       } catch (error) {
         if (error instanceof PdfTooManyPagesError || error instanceof PdfUnreadableError) {
           throw error;
@@ -53,10 +59,13 @@ export function createUnpdfTextExtractor({ maxPages, timeoutMs }: Options): PdfT
   };
 }
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, onTimeout: () => void): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new PdfUnreadableError('timeout')), timeoutMs);
+    timer = setTimeout(() => {
+      onTimeout();
+      reject(new PdfUnreadableError('timeout'));
+    }, timeoutMs);
   });
   // A rejection that arrives after the timeout has nobody waiting for it.
   promise.catch(() => {});

@@ -9,6 +9,7 @@ import {
   TEST_JWT_SECRET,
   TEST_PASSWORD,
 } from '../../test/start-app';
+import { createPasswordHasher } from './password-hasher';
 import { SESSION_COOKIE } from './session-cookie';
 import { createSessionTokens, SESSION_TTL_MS } from './session-tokens';
 
@@ -182,6 +183,19 @@ describe('POST /api/auth/login', () => {
     }
   });
 
+  it('refuses a password longer than any it could match, before hashing it', async () => {
+    const { url, baseUrl } = await setup();
+    await signUp(baseUrl, ACCOUNT);
+
+    const response = await sendJson(url('/login'), 'POST', {
+      email: ACCOUNT.email,
+      password: 'x'.repeat(1_025),
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.headers.getSetCookie()).toEqual([]);
+  });
+
   it('requires both fields', async () => {
     const { url } = await setup();
 
@@ -207,6 +221,17 @@ describe('POST /api/auth/logout', () => {
     expect(response.status).toBe(204);
     expect(cleared).toMatchObject({ name: SESSION_COOKIE, value: '', path: '/api' });
     expect(cleared?.expires?.getTime()).toBeLessThan(Date.now());
+  });
+
+  // Sessions are stateless (see the README): logging out removes the cookie from the browser, but a
+  // copy of the token stays valid until it expires. Pinned here so changing it is a decision.
+  it('leaves a copied token valid until it expires', async () => {
+    const { url, me, baseUrl } = await setup();
+    const { cookie } = await signUp(baseUrl, ACCOUNT);
+
+    await fetch(url('/logout'), { method: 'POST', headers: { cookie } });
+
+    expect((await me(cookie)).status).toBe(200);
   });
 
   it('leaves cookies alone when the request has no session (a cross-site POST)', async () => {
@@ -256,6 +281,22 @@ describe('GET /api/auth/me', () => {
     expect(response.status).toBe(401);
   });
 
+  it('treats a malformed cookie as no session', async () => {
+    const { me } = await setup();
+
+    const response = await me(`${SESSION_COOKIE}=%E0%A4%A`);
+
+    expect(response.status).toBe(401);
+  });
+
+  it('answers 401, not 404, for an unknown API route without a session', async () => {
+    const { baseUrl } = await setup();
+
+    const response = await fetch(`${baseUrl}/api/does-not-exist`);
+
+    expect(response.status).toBe(401);
+  });
+
   it('rejects a valid token for an account that no longer exists', async () => {
     const { me, baseUrl, db } = await setup();
     const { cookie } = await signUp(baseUrl, ACCOUNT);
@@ -265,6 +306,28 @@ describe('GET /api/auth/me', () => {
 
     expect(response.status).toBe(401);
   });
+});
+
+it('marks the session cookie Secure when the app serves HTTPS', async () => {
+  const { baseUrl } = await startApp({
+    sessions: 'real',
+    auth: {
+      passwordHasher: createPasswordHasher({ log2N: 10, r: 8, p: 1 }),
+      sessionTokens: createSessionTokens({ secret: TEST_JWT_SECRET }),
+      secureCookies: true,
+    },
+  });
+
+  const response = await sendJson(`${baseUrl}/api/auth/signup`, 'POST', ACCOUNT);
+
+  expect(setCookies(response)).toEqual([
+    expect.objectContaining({
+      name: SESSION_COOKIE,
+      secure: true,
+      httpOnly: true,
+      sameSite: 'lax',
+    }),
+  ]);
 });
 
 it('never sends the password hash', async () => {

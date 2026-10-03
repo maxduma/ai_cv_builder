@@ -9,15 +9,16 @@
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  height: 28px;
-  padding: 0 12px 0 8px;
+  /* Grows instead of spilling when a long target role wraps. */
+  min-height: 28px;
+  padding: 5px 12px 5px 8px;
   border-radius: 999px;
   background: #eef8f2;
   box-shadow: inset 0 0 0 1px rgba(34, 164, 93, 0.22);
   color: var(--success-ink);
   font-size: 13px;
   font-weight: 550;
-  line-height: 1;
+  line-height: 1.3;
 }
 
 .ok-chip svg {
@@ -49,10 +50,11 @@
   margin-top: 24px;
 }
 
-/* One 32px segment per question: the count is set inline (the design hard-codes 4). */
+/* One segment of up to 32px per question: the count is set inline (the design hard-codes 4).
+   Segments narrow to fit a phone when there are many questions. */
 .cq-segs {
   display: grid;
-  grid-template-columns: repeat(4, 32px);
+  grid-template-columns: repeat(4, minmax(0, 32px));
   gap: 5px;
 }
 

@@ -1,6 +1,7 @@
 import { CV_LIMITS, type CvContact, type CvContent, type CvLink } from '@cv-builder/shared';
 import { useState } from 'react';
 import { flushSync } from 'react-dom';
+import { newId } from '../../../lib/new-id';
 import { CloseIcon, SmallPlusIcon } from '../../../ui/icons';
 import type { EditorSession } from '../editor-session';
 import type { SectionProps } from './section-props';
@@ -145,7 +146,7 @@ function Links({ links, session }: { links: CvLink[]; session: EditorSession }) 
   }
 
   function add() {
-    const link: CvLink = { id: crypto.randomUUID(), label: 'Portfolio', url: '' };
+    const link: CvLink = { id: newId(), label: 'Portfolio', url: '' };
     flushSync(() => session.edit((cv) => withLinks(cv, [...cv.contact.links, link])));
     session.announce('Added a link.');
     focusField(urlId(link));

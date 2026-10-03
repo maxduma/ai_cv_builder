@@ -118,6 +118,7 @@ export function TargetRoleStep({
                   key={suggestion}
                   type="button"
                   className="s-chip"
+                  title={suggestion}
                   aria-pressed={selected}
                   onClick={() => draft.setRole(suggestion)}
                 >

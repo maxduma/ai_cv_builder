@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router';
 import { useCurrentUser } from '../features/auth/api';
-import { hasUnsavedEdits } from '../features/editor/editor-session';
+import {
+  flushEditorSessions,
+  hasUnsavedEdits,
+  retryFailedEditorSessions,
+} from '../features/editor/editor-session';
 import { AppHeader } from './AppHeader';
 import { UserMenu } from './UserMenu';
 import './layout.css';
@@ -19,14 +23,25 @@ export function AppLayout() {
   }
   const menuOpen = menuOpenOn === location.key;
 
-  // Closing the tab while CV edits are still unsaved (anywhere in the app: saves carry on after
-  // leaving the editor) makes the browser ask first.
+  // CV edits are saved even when the page is left (saves carry on after leaving the editor):
+  // closing the tab while some are unsaved makes the browser ask first; a page put in the
+  // background (switching apps on a phone, where it may be closed without that question) saves
+  // them at once; and saves that failed for lack of a connection go out again when it is back.
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
       if (hasUnsavedEdits()) event.preventDefault();
     };
+    const saveWhenHidden = () => {
+      if (document.visibilityState === 'hidden') void flushEditorSessions();
+    };
     window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
+    document.addEventListener('visibilitychange', saveWhenHidden);
+    window.addEventListener('online', retryFailedEditorSessions);
+    return () => {
+      window.removeEventListener('beforeunload', warn);
+      document.removeEventListener('visibilitychange', saveWhenHidden);
+      window.removeEventListener('online', retryFailedEditorSessions);
+    };
   }, []);
   const setMenuOpen = (open: boolean) => setMenuOpenOn(open ? location.key : null);
 

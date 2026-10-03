@@ -7,9 +7,8 @@ import {
 } from '@cv-builder/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { type KeyboardEvent, type RefObject, useEffect, useId, useRef, useState } from 'react';
-import { ApiError } from '../../lib/api-client';
 import { CloseIcon, ErrorIcon, SparkleIcon } from '../../ui/icons';
-import { cacheQuestion, cvKeys, cvsApi } from '../cvs/api';
+import { cacheQuestion, cvsApi, questionErrorMessage, refetchIfQuestionChanged } from '../cvs/api';
 import type { EditorSession } from './editor-session';
 
 type CardState = 'failed' | 'updating' | 'waiting';
@@ -180,10 +179,8 @@ function QuestionCard({
       session.announce(`Adding your answer to ${question.target}…`);
     } catch (caught) {
       setBusy(false);
-      setError(caught instanceof Error ? caught.message : 'Something went wrong. Try again.');
-      if (caught instanceof ApiError && caught.code === 'QUESTION_CLOSED') {
-        void queryClient.invalidateQueries({ queryKey: cvKeys.detail(cv.id) });
-      }
+      setError(questionErrorMessage(caught));
+      refetchIfQuestionChanged(queryClient, cv.id, caught);
     }
   }
 
@@ -196,7 +193,8 @@ function QuestionCard({
       session.announce('Question dismissed.');
     } catch (caught) {
       setBusy(false);
-      setError(caught instanceof Error ? caught.message : 'Something went wrong. Try again.');
+      setError(questionErrorMessage(caught));
+      refetchIfQuestionChanged(queryClient, cv.id, caught);
     }
   }
 

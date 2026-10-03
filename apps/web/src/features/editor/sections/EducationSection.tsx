@@ -1,4 +1,5 @@
 import { CV_LIMITS, type CvEducation } from '@cv-builder/shared';
+import { newId } from '../../../lib/new-id';
 import type { EditorSession } from '../editor-session';
 import { type EntryKind, EntrySection, editEntry, joinParts } from './EntrySection';
 import type { SectionProps } from './section-props';
@@ -16,7 +17,7 @@ const EDUCATION: EntryKind<CvEducation> = {
   list: (cv) => cv.education,
   withList: (cv, education) => ({ ...cv, education }),
   create: () => ({
-    id: crypto.randomUUID(),
+    id: newId(),
     degree: '',
     school: '',
     location: '',

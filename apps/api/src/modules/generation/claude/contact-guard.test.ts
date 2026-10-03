@@ -150,5 +150,12 @@ describe('guardContactDetails', () => {
 
       expect(result.cleared).toEqual(['links']);
     });
+
+    it.each(['', 'https://', '   '])('a link without an address (%j)', (url) => {
+      const result = guardContactDetails(contact({ links: [link(url, 'LinkedIn')] }), 'LinkedIn');
+
+      expect(result.contact.links).toEqual([]);
+      expect(result.cleared).toEqual(['links']);
+    });
   });
 });

@@ -5,7 +5,7 @@ import {
   type CvQuestionDto,
   isUpdating,
 } from '@cv-builder/shared';
-import { type QueryClient, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { type KeyboardEvent, type ReactNode, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { Link, Navigate, useParams } from 'react-router';
@@ -22,12 +22,18 @@ import {
   SmallArrowIcon,
 } from '../../ui/icons';
 import { StateIcon, StatePanel } from '../../ui/StatePanel';
-import { cacheQuestion, cvKeys, cvsApi, useCv, useQuestionUpdates } from '../cvs/api';
+import {
+  cacheQuestion,
+  cvsApi,
+  questionErrorMessage,
+  refetchIfQuestionChanged,
+  useCv,
+  useQuestionUpdates,
+} from '../cvs/api';
 import './clarify.css';
 
 /** The finish bar's primary action, where focus goes once no question is left to answer. */
 const FINISH_PRIMARY_ID = 'cq-finish-primary';
-const SAVE_FAILED = 'Something went wrong. Try again in a moment.';
 
 function classes(...names: (string | false | null | undefined)[]) {
   return names.filter(Boolean).join(' ');
@@ -73,38 +79,6 @@ function nextOpenIndex(questions: CvQuestionDto[], from: number, exceptId: strin
 function startingText(question: CvQuestionDto): string {
   const again = question.followUp !== null || question.update?.status === 'FAILED';
   return again ? (question.answer ?? '') : '';
-}
-
-function isFieldDetail(value: unknown): value is { message: string } {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'message' in value &&
-    typeof value.message === 'string'
-  );
-}
-
-/** What went wrong, in the API's words: a rejected answer names its problem in `details`. */
-function errorMessage(error: unknown): string {
-  if (!(error instanceof ApiError)) return SAVE_FAILED;
-  if (error.code === 'VALIDATION_ERROR' && Array.isArray(error.details)) {
-    const detail: unknown = error.details[0];
-    if (isFieldDetail(detail)) return detail.message;
-  }
-  return error.message;
-}
-
-/**
- * The question changed elsewhere (answered, skipped or dismissed in another tab, or its last
- * answer is still being applied): fetch the CV again, so the card shows where it stands now.
- */
-function refetchIfStale(queryClient: QueryClient, cvId: string, error: unknown) {
-  if (
-    error instanceof ApiError &&
-    (error.code === 'QUESTION_CLOSED' || error.code === 'QUESTION_BUSY')
-  ) {
-    void queryClient.invalidateQueries({ queryKey: cvKeys.detail(cvId) });
-  }
 }
 
 /**
@@ -316,7 +290,7 @@ function ClarifyQuestions({ cv, questions }: { cv: CvDetail; questions: CvQuesti
           <span
             className="cq-segs"
             aria-hidden="true"
-            style={{ gridTemplateColumns: `repeat(${total}, 32px)` }}
+            style={{ gridTemplateColumns: `repeat(${total}, minmax(0, 32px))` }}
           >
             {questions.map((question) => (
               <span
@@ -454,12 +428,12 @@ function OpenCard({
   const answer = useMutation({
     mutationFn: (value: string) => cvsApi.answerQuestion(cvId, question.id, { answer: value }),
     onSuccess: (saved) => onAnswered(saved),
-    onError: (error) => refetchIfStale(queryClient, cvId, error),
+    onError: (error) => refetchIfQuestionChanged(queryClient, cvId, error),
   });
   const skip = useMutation({
     mutationFn: () => cvsApi.updateQuestion(cvId, question.id, { status: 'skipped' }),
     onSuccess: (saved) => onSkipped(saved),
-    onError: (error) => refetchIfStale(queryClient, cvId, error),
+    onError: (error) => refetchIfQuestionChanged(queryClient, cvId, error),
   });
 
   const busy = answer.isPending || skip.isPending;
@@ -555,7 +529,7 @@ function OpenCard({
         {failure && (
           <div id={errorId} className="alert is-inline" role="alert">
             <ErrorIcon width={16} height={16} />
-            <p className="alert-text">{errorMessage(failure)}</p>
+            <p className="alert-text">{questionErrorMessage(failure)}</p>
           </div>
         )}
         <div className="cq-foot">
@@ -670,7 +644,7 @@ function ClosedCard({
       statusRef.current?.focus();
       void cacheQuestion(queryClient, cvId, saved);
     },
-    onError: (error) => refetchIfStale(queryClient, cvId, error),
+    onError: (error) => refetchIfQuestionChanged(queryClient, cvId, error),
   });
 
   const { status, update } = question;
@@ -759,7 +733,7 @@ function ClosedCard({
           {retry.isError && (
             <p className="error" role="alert">
               <ErrorIcon />
-              <span>{errorMessage(retry.error)}</span>
+              <span>{questionErrorMessage(retry.error)}</span>
             </p>
           )}
         </div>

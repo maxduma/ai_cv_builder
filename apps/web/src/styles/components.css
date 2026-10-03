@@ -410,13 +410,16 @@
   text-align: right;
 }
 
-@media (max-width: 599px) {
-  /* 16px text stops iOS from zooming into fields. */
+/* 16px text stops iOS from zooming into fields: on phones, and on touch screens of any width (a
+   phone held sideways is wider than 599px). */
+@media (max-width: 599px), (hover: none) {
   .input,
   .textarea {
     font-size: 16px;
   }
+}
 
+@media (max-width: 599px) {
   /* Touch targets. */
   .btn-sm {
     height: 44px;

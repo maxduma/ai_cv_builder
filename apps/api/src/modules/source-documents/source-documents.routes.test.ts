@@ -2,6 +2,7 @@ import {
   type ApiErrorBody,
   type CvDetail,
   SOURCE_PDF_MAX_BYTES,
+  SOURCE_PDF_MAX_TEXT_LENGTH,
   type SourceDocumentDto,
 } from '@cv-builder/shared';
 import { describe, expect, it } from 'vitest';
@@ -9,8 +10,10 @@ import {
   PdfTooManyPagesError,
   PdfUnreadableError,
 } from '../../integrations/extraction/pdf-text-extractor';
+import { createInMemoryRepositories } from '../../test/in-memory-repositories';
 import {
   createFakeExtractor,
+  createMemoryStorage,
   sendJson,
   startApp,
   startAppWithTwoAccounts,
@@ -135,6 +138,7 @@ describe('PUT /api/cvs/:cvId/source-document', () => {
     [new PdfUnreadableError('invalid'), 'PDF_UNREADABLE'],
     [new PdfTooManyPagesError(42), 'PDF_TOO_MANY_PAGES'],
     [{ pageCount: 1, text: '  ' }, 'PDF_NO_TEXT'],
+    [{ pageCount: 20, text: 'a'.repeat(SOURCE_PDF_MAX_TEXT_LENGTH + 1) }, 'PDF_TOO_MUCH_TEXT'],
   ] as const)('reports unusable PDFs (%s)', async (result, code) => {
     const { upload, files } = await setup({
       pdfTextExtractor: createFakeExtractor(result).extractor,
@@ -145,6 +149,97 @@ describe('PUT /api/cvs/:cvId/source-document', () => {
     expect(response.status).toBe(422);
     expect(await errorCode(response)).toBe(code);
     expect(files.size).toBe(0);
+  });
+
+  it.each([
+    [
+      'the file in another field',
+      () => {
+        const form = new FormData();
+        form.append('document', new Blob([PDF_BYTES], { type: 'application/pdf' }), 'cv.pdf');
+        return { body: form };
+      },
+    ],
+    [
+      'two files',
+      () => {
+        const form = pdfForm();
+        form.append('file', new Blob([PDF_BYTES], { type: 'application/pdf' }), 'other.pdf');
+        return { body: form };
+      },
+    ],
+    ['a JSON body', () => ({ body: '{}', headers: { 'Content-Type': 'application/json' } })],
+    [
+      'a multipart body without its boundary',
+      () => ({ body: '--x\r\n', headers: { 'Content-Type': 'multipart/form-data' } }),
+    ],
+  ])('answers an upload with %s with 400, reading nothing', async (_, request) => {
+    const { url, extractorCalls, files } = await setup();
+
+    const response = await fetch(url, { method: 'PUT', ...request() });
+
+    expect(response.status).toBe(400);
+    expect(await errorCode(response)).toBe('VALIDATION_ERROR');
+    expect(extractorCalls).toHaveLength(0);
+    expect(files.size).toBe(0);
+  });
+
+  it('needs a session, and reads nothing without one', async () => {
+    const { baseUrl, owner, extractorCalls, files } = await startAppWithTwoAccounts();
+    const created = await sendJson(
+      `${baseUrl}/api/cvs`,
+      'POST',
+      { targetRole: 'AI Engineer' },
+      { cookie: owner.cookie },
+    );
+    const cv = (await created.json()) as CvDetail;
+
+    const response = await fetch(`${baseUrl}/api/cvs/${cv.id}/source-document`, {
+      method: 'PUT',
+      body: pdfForm(),
+    });
+
+    expect(response.status).toBe(401);
+    expect(extractorCalls).toHaveLength(0);
+    expect(files.size).toBe(0);
+  });
+
+  it('removes the stored file when saving the document fails or the CV is gone', async () => {
+    for (const outcome of ['throws', 'not found'] as const) {
+      const { repositories, db } = createInMemoryRepositories();
+      const { storage, files } = createMemoryStorage();
+      repositories.sourceDocuments.replaceForCv = async () => {
+        if (outcome === 'throws') throw new Error('Database went away');
+        return null;
+      };
+      const { upload } = await setup({ repositories, fileStorage: storage });
+
+      const response = await upload(pdfForm());
+
+      expect(response.status, outcome).toBe(outcome === 'throws' ? 500 : 404);
+      expect(files.size, outcome).toBe(0);
+      expect(db.documents, outcome).toHaveLength(0);
+    }
+  });
+
+  it('still saves the new PDF when the replaced file can’t be deleted', async () => {
+    const { storage, files } = createMemoryStorage();
+    const { upload, db } = await setup({
+      fileStorage: {
+        put: storage.put,
+        // Best effort: a file left behind wastes space but never fails the upload.
+        delete: async () => {
+          throw new Error('Permission denied');
+        },
+      },
+    });
+    await upload(pdfForm());
+
+    const response = await upload(pdfForm(PDF_BYTES, 'Newer.pdf'));
+
+    expect(response.status).toBe(200);
+    expect(db.documents.map((row) => row.originalName)).toEqual(['Newer.pdf']);
+    expect(files.size).toBe(2);
   });
 
   it("doesn't read uploads for another user's CV", async () => {

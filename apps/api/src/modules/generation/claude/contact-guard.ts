@@ -16,7 +16,8 @@ const LINE_END_HYPHEN = /-[^\S\n]*\n/g;
 const URL_SCHEME = /^(?:[a-z][a-z\d+.-]*:\/\/|mailto:)/;
 
 const squeeze = (text: string) => text.replace(INVISIBLE, '');
-const digitsOf = (text: string) => text.replace(/\D/g, '');
+/** A phone number's digits, which is how phones are compared. */
+export const digitsOf = (text: string) => text.replace(/\D/g, '');
 
 /**
  * Never let the model invent a way to reach someone: the email, the phone and each link's URL stay
@@ -43,7 +44,12 @@ export function guardContactDetails<T extends Contact>(
     phoneDigits === ''
       ? appears(squeeze(contact.phone.toLowerCase()))
       : digitsOf(sources).includes(phoneDigits);
-  const links = contact.links.filter((link) => appears(normaliseUrl(link.url)));
+  // A link without an address (e.g. a hyperlinked word whose URL the PDF text lost) is dropped too,
+  // so the person is asked for it.
+  const links = contact.links.filter((link) => {
+    const key = normaliseUrl(link.url);
+    return key !== '' && appears(key);
+  });
 
   const cleared: GuardedContactField[] = [];
   if (!emailFound) cleared.push('email');

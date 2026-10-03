@@ -1,6 +1,7 @@
 import { CV_LIMITS, type CvContent, type CvSkill } from '@cv-builder/shared';
 import { type KeyboardEvent, type SVGProps, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
+import { newId } from '../../../lib/new-id';
 import type { SectionProps } from './section-props';
 import { SectionCard, focusField, insertAt, plural, startsNarrow } from './SectionCard';
 
@@ -52,7 +53,7 @@ export function SkillsSection({ draft, session }: SectionProps) {
       session.announce(`${existing.name.trim()} is already on your CV.`);
       return;
     }
-    const skill: CvSkill = { id: crypto.randomUUID(), name };
+    const skill: CvSkill = { id: newId(), name };
     session.edit((cv) => withSkills(cv, [...cv.skills, skill]));
     session.announce(`Added ${name}.`);
   }

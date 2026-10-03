@@ -104,9 +104,10 @@ export function createInMemoryRepositories() {
     questions: [] as QuestionRow[],
   };
 
-  // A clock that always moves forward keeps "latest first" ordering deterministic.
-  let clock = Date.UTC(2026, 0, 1);
-  const now = () => new Date((clock += 1_000));
+  // A clock that always moves forward keeps "latest first" ordering deterministic, and follows
+  // real time, as the worker's stale-job cutoff is based on `Date.now()`.
+  let last = 0;
+  const now = () => new Date((last = Math.max(Date.now(), last + 1)));
 
   const findCv = (userId: string, cvId: string) =>
     db.cvs.find((cv) => cv.id === cvId && cv.userId === userId);
@@ -274,7 +275,13 @@ export function createInMemoryRepositories() {
         const cv = findCv(userId, cvId);
         if (!cv) return { kind: 'not_found' };
         if (cv.contentVersion === 0) return { kind: 'not_generated' };
-        const stored = CvContentSchema.parse(cv.content);
+        const parsed = CvContentSchema.safeParse(cv.content);
+        if (!parsed.success) {
+          throw new Error('The stored CV content does not match the schema', {
+            cause: parsed.error,
+          });
+        }
+        const stored = parsed.data;
         if (cv.contentVersion !== baseVersion) {
           return { kind: 'conflict', content: stored, contentVersion: cv.contentVersion };
         }
@@ -435,7 +442,13 @@ export function createInMemoryRepositories() {
           finishedAt,
         });
         const cv = findCv(job.userId, job.cvId);
-        if (cv) Object.assign(cv, { content, contentVersion: cv.contentVersion + 1 });
+        if (cv) {
+          Object.assign(cv, {
+            content,
+            contentVersion: cv.contentVersion + 1,
+            updatedAt: finishedAt,
+          });
+        }
         issues.forEach((issue, position) =>
           db.questions.push({
             id: randomUUID(),
