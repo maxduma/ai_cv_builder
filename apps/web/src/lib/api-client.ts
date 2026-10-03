@@ -83,7 +83,14 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     throw networkError();
   }
 
-  const payload = parseJson(await response.text());
+  let text = '';
+  try {
+    text = await response.text();
+  } catch {
+    // The connection dropped after the headers. An error status still tells what happened.
+    if (response.ok) throw networkError();
+  }
+  const payload = parseJson(text);
   if (!response.ok) {
     const error = toApiError(response.status, payload);
     reportIfSessionEnded(path, error);

@@ -15,7 +15,7 @@ import {
 } from '@cv-builder/shared';
 import { type QueryClient, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
-import { api, type UploadOptions } from '../../lib/api-client';
+import { ApiError, api, type UploadOptions } from '../../lib/api-client';
 
 export const cvKeys = {
   all: ['cvs'] as const,
@@ -99,6 +99,41 @@ export async function cacheQuestion(
     cv ? { ...cv, questions: cv.questions.map((q) => (q.id === question.id ? question : q)) } : cv,
   );
   void queryClient.invalidateQueries({ queryKey: key });
+}
+
+function isFieldDetail(value: unknown): value is { message: string } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'message' in value &&
+    typeof value.message === 'string'
+  );
+}
+
+/**
+ * Why answering, skipping or dismissing a question failed, in the API's words: a rejected answer
+ * names its problem in `details`.
+ */
+export function questionErrorMessage(error: unknown): string {
+  if (!(error instanceof ApiError)) return 'Something went wrong. Try again in a moment.';
+  if (error.code === 'VALIDATION_ERROR' && Array.isArray(error.details)) {
+    const detail: unknown = error.details[0];
+    if (isFieldDetail(detail)) return detail.message;
+  }
+  return error.message;
+}
+
+/**
+ * The question changed elsewhere (answered, skipped or dismissed in another tab, or its last
+ * answer is still being applied): fetch the CV again, so the card shows where it stands now.
+ */
+export function refetchIfQuestionChanged(queryClient: QueryClient, cvId: string, error: unknown) {
+  if (
+    error instanceof ApiError &&
+    (error.code === 'QUESTION_CLOSED' || error.code === 'QUESTION_BUSY')
+  ) {
+    void queryClient.invalidateQueries({ queryKey: cvKeys.detail(cvId) });
+  }
 }
 
 /**

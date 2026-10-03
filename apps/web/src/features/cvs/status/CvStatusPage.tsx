@@ -81,13 +81,14 @@ export function CvStatusPage() {
     if (finishedStatus) void queryClient.invalidateQueries({ queryKey: cvKeys.all });
   }, [finishedStatus, queryClient]);
 
-  if (error) {
-    if (error instanceof ApiError && (error.status === 404 || error.status === 400)) {
-      return <NotFoundPage />;
-    }
-    throw error;
-  }
+  // A failed background refetch keeps the CV on screen: only a first load can fail here.
   if (!cv) {
+    if (error) {
+      if (error instanceof ApiError && (error.status === 404 || error.status === 400)) {
+        return <NotFoundPage />;
+      }
+      throw error;
+    }
     return <main className="page-main is-gen" aria-busy="true" />;
   }
   // Never generated: the CV is still a draft, so open the form.

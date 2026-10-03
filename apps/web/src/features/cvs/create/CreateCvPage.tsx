@@ -14,14 +14,16 @@ export function EditCvPage() {
   const { cvId = '' } = useParams();
   const { data: cv, error } = useCv(cvId);
 
-  if (error) {
-    // An unknown or malformed id, or someone else's CV.
-    if (error instanceof ApiError && (error.status === 404 || error.status === 400)) {
-      return <NotFoundPage />;
-    }
-    throw error;
-  }
+  // A failed background refetch keeps the form, and what was typed into it, on screen: only a
+  // first load can fail here.
   if (!cv) {
+    if (error) {
+      // An unknown or malformed id, or someone else's CV.
+      if (error instanceof ApiError && (error.status === 404 || error.status === 400)) {
+        return <NotFoundPage />;
+      }
+      throw error;
+    }
     return <main className="page-main is-form" aria-busy="true" />;
   }
   // While it generates, the CV's page is its status screen; once it's done, the editor.
