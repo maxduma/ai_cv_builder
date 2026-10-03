@@ -124,8 +124,10 @@ export function createCvsRepository(prisma: PrismaClient) {
      */
     removeForUser(userId: string, cvId: string): Promise<string[] | null> {
       return prisma.$transaction(async (tx) => {
-        // The CV's row first, as every other writer locks it, and its jobs after it, as the delete
-        // cascades: a job worked on at the same moment can't end up waiting on the CV's row.
+        // The CV's row first, then its jobs as the delete cascades. Every writer that takes both
+        // does so in that order, and those that only touch job rows (the claim, the heartbeat)
+        // never wait for a second lock while holding one, so a delete can't deadlock with a job
+        // being worked on.
         const locked = await tx.$queryRaw<{ id: string }[]>`
           SELECT id FROM cvs WHERE id = ${cvId}::uuid AND user_id = ${userId}::uuid FOR UPDATE`;
         if (locked.length === 0) return null;

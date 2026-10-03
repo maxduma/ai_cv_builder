@@ -216,6 +216,9 @@ export function createGenerationRepository(prisma: PrismaClient) {
             input: true,
             kind: true,
             questionId: true,
+            // A plain read: it takes no lock on the CV's row. This transaction holds a job row, and
+            // waiting for the CV's row now would meet `removeForUser`, which holds that and wants
+            // the job (see `succeed`).
             cv: { select: { content: true } },
           },
         });
@@ -247,9 +250,9 @@ export function createGenerationRepository(prisma: PrismaClient) {
      */
     succeed(lease: JobLease, content: CvContent, issues: GenerationIssue[]): Promise<boolean> {
       return prisma.$transaction(async (tx) => {
-        // The CV's row first, as every other writer locks it. Deleting a CV locks its row and then
-        // deletes its jobs, so taking the job first could leave the two waiting on each other. If
-        // the CV is already gone, so is the job, and nothing is locked or written.
+        // The CV's row first, as every writer that takes both it and a job does. Deleting a CV locks
+        // its row and then deletes its jobs, so taking the job first could leave the two waiting on
+        // each other. If the CV is already gone, so is the job, and nothing is locked or written.
         await tx.$executeRaw`
           SELECT 1 FROM cvs
           WHERE id = (SELECT cv_id FROM generation_jobs WHERE id = ${lease.jobId}::uuid)
@@ -314,10 +317,12 @@ export function createGenerationRepository(prisma: PrismaClient) {
         });
         if (!job?.questionId) return 'lost';
 
-        // The CV's row first, as every other writer of content and questions locks it.
+        // The CV's row first, as every writer that takes both it and a job does.
         const [cv] = await tx.$queryRaw<{ content: unknown }[]>`
           SELECT content FROM cvs WHERE id = ${job.cvId}::uuid FOR UPDATE`;
-        const current = CvContentSchema.safeParse(cv?.content);
+        // Deleted while this waited for its row (the job went with it): lost, not a bad update.
+        if (!cv) return 'lost';
+        const current = CvContentSchema.safeParse(cv.content);
         if (!current.success) return 'invalid';
 
         const resolution = resolve(current.data);

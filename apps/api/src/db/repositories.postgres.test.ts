@@ -321,6 +321,36 @@ describe.skipIf(!DATABASE_URL)('Prisma repositories on PostgreSQL', () => {
       );
     });
 
+    it('treats an answer as lost when its CV is deleted while it waits for the CV’s row', async () => {
+      const owner = await user('alex@example.com');
+      const { cvId, questionIds } = await generated(owner);
+      await repositories.questions.answer(owner, cvId, questionIds[0]!, 'AWS.', answerInput);
+      const lease = (await repositories.generation.claimNext())!;
+
+      let outcome!: ReturnType<typeof repositories.generation.completeAnswer>;
+      await prisma.$transaction(async (tx) => {
+        // Hold the CV's row, as a delete does, so that completing the answer has to wait for it...
+        await tx.$queryRaw`SELECT id FROM cvs WHERE id = ${cvId}::uuid FOR UPDATE`;
+        outcome = repositories.generation.completeAnswer(lease, () => ({ kind: 'invalid' }));
+        // ...wait until it is stuck on that row, i.e. until some session waits for this very
+        // transaction (pg_locks is live; pg_stat_activity is a snapshot, frozen inside a transaction)...
+        for (let tries = 0; ; tries += 1) {
+          const [waiting] = await tx.$queryRaw<{ n: bigint }[]>`
+            SELECT count(*) AS n FROM pg_locks
+            WHERE locktype = 'transactionid' AND NOT granted
+              AND transactionid = pg_current_xact_id()::xid`;
+          if (waiting && waiting.n > 0n) break;
+          if (tries > 150) throw new Error('completeAnswer never waited for the CV’s row');
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        // ...and delete the CV under it. Its job goes with it.
+        await tx.cv.delete({ where: { id_userId: { id: cvId, userId: owner } } });
+      });
+
+      // 'invalid' would make the worker log a failed update, and an operator suspect the AI.
+      expect(await outcome).toBe('lost');
+    });
+
     // A generation that finishes while its CV is deleted takes the same two rows (the CV and its
     // job) from two sides. Both lock the CV first, so one waits for the other; locking the job
     // first in `succeed` made PostgreSQL abort one of them as a deadlock.
