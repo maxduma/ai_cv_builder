@@ -142,6 +142,29 @@ describe('toCvView', () => {
     expect(view.experience[0]?.bullets).toEqual([{ id: 'b-1', text: 'Line one line two' }]);
   });
 
+  it('prints what the font has: composed accents, ordinary spaces, no invisible marks', () => {
+    const view = toCvView({
+      ...CV,
+      contact: {
+        ...CV.contact,
+        firstName: 'Jose\u0301',
+        lastName: 'Mu\u0308ller\u200b',
+        headline: 'Backend\u2009Engineer\u202f(remote)\u200f',
+      },
+      summary: 'Full\u2011stack\u2010ready\u2003engineer.\ufeff',
+    });
+
+    expect(view.name).toBe('Jos\u00e9 M\u00fcller');
+    expect(view.headline).toBe('Backend Engineer (remote)');
+    expect(view.summary).toBe('Full-stack-ready engineer.');
+  });
+
+  it('leaves Cyrillic and ordinary no-break spaces alone', () => {
+    const view = toCvView({ ...CV, summary: 'Їжак\u00a0і Ґанок — друзі.' });
+
+    expect(view.summary).toBe('Їжак\u00a0і Ґанок — друзі.');
+  });
+
   it('keeps line breaks in the summary and details, like CSS pre-line', () => {
     const view = toCvView({
       ...CV,

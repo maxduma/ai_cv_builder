@@ -53,6 +53,56 @@ function registerFonts() {
   fontsRegistered = true;
 }
 
+const FONT_WEIGHTS = [400, 500, 600, 700];
+
+/**
+ * The letters CVs are written in: Basic Latin to Latin Extended-B, Cyrillic with its supplement,
+ * and Latin Extended Additional. Ligature glyphs (U+FB00 and up: ﬁ, ﬂ) are left out on purpose,
+ * see `primeGlyphCaches`.
+ */
+const PRIMED_RANGES: [from: number, to: number][] = [
+  [0x20, 0x24f],
+  [0x400, 0x52f],
+  [0x1e00, 0x1eff],
+];
+
+let glyphCachesPrimed: Promise<void> | null = null;
+
+/**
+ * Gives the letters of the fonts a glyph of their own, with their own text mapping, before any PDF
+ * is drawn. React-PDF keeps one fontkit font per weight for as long as the process lives, and
+ * fontkit caches each glyph with the code points of whoever asked for it first. The first PDF that
+ * prints an accented letter (ü, ž, Ş) asks for its base letter as a part of the composite glyph,
+ * with no code point, so "u" is cached as a glyph that stands for no character: every later PDF
+ * then lacks the text mapping for "u", and the letter copies as a control character or is lost to
+ * text extraction. Asking for each letter first rules that out.
+ *
+ * Only letters, never ligatures: a glyph that the font builds from several characters ("fi" in
+ * "first") must be cached by the layout itself, with all of its code points. A ligature glyph
+ * cached here with one code point (ﬁ) would make the layout count a character too few after every
+ * "fi", and lines would break in the middle of words.
+ */
+function primeGlyphCaches(): Promise<void> {
+  glyphCachesPrimed ??= (async () => {
+    for (const fontWeight of FONT_WEIGHTS) {
+      const descriptor = { fontFamily: PDF_FONT_FAMILY, fontWeight, fontStyle: 'normal' } as const;
+      await Font.load(descriptor);
+      const font = Font.getFont(descriptor).data;
+      if (!font) throw new Error(`The PDF font (weight ${fontWeight}) did not load`);
+      for (const codePoint of font.characterSet) {
+        if (PRIMED_RANGES.some(([from, to]) => codePoint >= from && codePoint <= to)) {
+          font.glyphForCodePoint(codePoint);
+        }
+      }
+    }
+  })().catch((error: unknown) => {
+    // Try again with the next PDF instead of failing every one from now on.
+    glyphCachesPrimed = null;
+    throw error;
+  });
+  return glyphCachesPrimed;
+}
+
 /**
  * How many pages a PDF has. pdf.js may take over the buffer it is given and rejects Node Buffers
  * (which `renderToBuffer` returns), so it reads a plain copy.
@@ -74,6 +124,7 @@ export function createReactPdfCvRenderer(): CvPdfRenderer {
   registerFonts();
   return {
     async render(content) {
+      await primeGlyphCaches();
       const data = await renderToBuffer(<CvPdfDocument view={toCvView(content)} />);
       return { data, pageCount: await countPdfPages(data) };
     },
