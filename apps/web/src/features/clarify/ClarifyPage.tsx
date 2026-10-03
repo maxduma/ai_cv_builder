@@ -290,7 +290,7 @@ function ClarifyQuestions({ cv, questions }: { cv: CvDetail; questions: CvQuesti
           <span
             className="cq-segs"
             aria-hidden="true"
-            style={{ gridTemplateColumns: `repeat(${total}, 32px)` }}
+            style={{ gridTemplateColumns: `repeat(${total}, minmax(0, 32px))` }}
           >
             {questions.map((question) => (
               <span

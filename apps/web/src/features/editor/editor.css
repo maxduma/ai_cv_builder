@@ -471,6 +471,19 @@
     overflow: hidden;
   }
 
+  /* On a narrow phone the status gives way to the button: "A4 · 2 pages · saved" is cut short
+     with an ellipsis (a failed save keeps its "Try again"). */
+  .ed-mbar .ed-save > span:last-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .ed-mbar .ed-save > svg,
+  .ed-mbar .ed-save > .spinner {
+    flex-shrink: 0;
+  }
+
   .toast-region {
     bottom: calc(96px + env(safe-area-inset-bottom, 0px));
   }
@@ -519,7 +532,6 @@
 
   .ask-body .input {
     height: 44px;
-    font-size: 16px;
   }
 
   .ed-mbar {
@@ -553,4 +565,11 @@
 /* Focus moves to the card itself only when it has nothing else to focus (while it updates). */
 .ask-card:focus {
   outline: none;
+}
+
+/* 16px text stops iOS from zooming into fields, on phones held either way (see components.css). */
+@media (max-width: 599px), (hover: none) {
+  .ask-body .input {
+    font-size: 16px;
+  }
 }

@@ -766,14 +766,6 @@
     padding: 4px 12px 14px;
   }
 
-  /* 16px text stops iOS from zooming into fields. */
-  .ed-card .input,
-  .ed-card .textarea,
-  .select,
-  .bl-input {
-    font-size: 16px;
-  }
-
   /* Touch targets. */
   .ed-card .input,
   .select {
@@ -825,5 +817,15 @@
 
   .skill-add .btn {
     height: 44px;
+  }
+}
+
+/* 16px text stops iOS from zooming into fields, on phones held either way (see components.css). */
+@media (max-width: 599px), (hover: none) {
+  .ed-card .input,
+  .ed-card .textarea,
+  .select,
+  .bl-input {
+    font-size: 16px;
   }
 }
