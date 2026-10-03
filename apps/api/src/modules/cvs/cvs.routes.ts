@@ -39,13 +39,21 @@ export function createCvsRouter(cvsService: CvsService): Router {
     res.json(toCvDetail(cv) satisfies CvDetail);
   });
 
-  // Stores the target role and the free-text source ("describe your experience").
+  // Renames the CV, and stores the target role and the free-text source ("describe your experience").
   router.patch('/:cvId', async (req, res) => {
     const user = requireUser(req);
     const { cvId } = CvIdParamsSchema.parse(req.params);
     const input = UpdateCvRequestSchema.parse(req.body ?? {});
     const cv = await cvsService.update(user.id, cvId, input);
     res.json(toCvDetail(cv) satisfies CvDetail);
+  });
+
+  // Deletes the CV with its generations, questions and uploaded PDF.
+  router.delete('/:cvId', async (req, res) => {
+    const user = requireUser(req);
+    const { cvId } = CvIdParamsSchema.parse(req.params);
+    await cvsService.remove(user.id, cvId);
+    res.status(204).end();
   });
 
   // The editor's autosave: the whole document, over the version it was edited from.

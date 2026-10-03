@@ -1,6 +1,7 @@
 import type { CvContent } from '@cv-builder/shared';
 import { type ReactNode, useEffect, useEffectEvent, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
+import { classes } from '../../../lib/classes';
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -10,7 +11,7 @@ import {
   TrashIcon,
 } from '../../../ui/icons';
 import type { EditorSession, Undo } from '../editor-session';
-import { SectionCard, classes, focusField, insertAt, startsNarrow } from './SectionCard';
+import { SectionCard, focusField, insertAt, startsNarrow } from './SectionCard';
 
 /** What Experience and Education tell the shared list about their entries. */
 export interface EntryKind<T extends { id: string }> {

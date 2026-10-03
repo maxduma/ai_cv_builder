@@ -9,6 +9,13 @@ import Anthropic, {
 import type { Logger } from '../../lib/logger';
 
 /**
+ * The model that writes the CVs and applies the answers. The request below uses what Opus 5.5
+ * offers (adaptive thinking, effort, server-side fallbacks), so another model may reject it:
+ * change this together with the request.
+ */
+export const CLAUDE_MODEL = 'claude-opus-5-5';
+
+/**
  * How much Claude thinks before answering, and with it how long a CV takes. `medium` is Claude
  * Opus 5.5's default and fits the "about a minute" the UI promises; `high` is the knob to turn if
  * drafts fall short.
@@ -140,17 +147,16 @@ export interface ClaudeSdk {
 
 interface Options {
   apiKey: string;
-  model: string;
   logger: Logger;
 }
 
-/** The Claude client on the Anthropic SDK. */
-export function createClaudeClient({ apiKey, model, logger }: Options): ClaudeClient {
+/** The Claude client on the Anthropic SDK, for `CLAUDE_MODEL`. */
+export function createClaudeClient({ apiKey, logger }: Options): ClaudeClient {
   // The SDK retries connection errors, 408, 409, 429 and 5xx (twice, with backoff) and its
   // `timeout` only bounds the wait for response headers, so it stays at its default: the caller's
   // signal is the deadline.
   const sdk = new Anthropic({ apiKey, maxRetries: 2, logger: messagesOnly(logger) });
-  return createClaudeClientWith({ sdk, model, logger });
+  return createClaudeClientWith({ sdk, model: CLAUDE_MODEL, logger });
 }
 
 /** `createClaudeClient` on a given SDK client. */

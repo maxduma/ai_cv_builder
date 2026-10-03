@@ -36,11 +36,11 @@ interface Options {
    */
   concurrency?: number;
   /**
-   * Deadline for one generation, the generator's own retries included. Past it the job fails with
-   * `AI_TIMEOUT`, even if the generator ignores its abort signal.
+   * Deadline for one generation, the generator's own retries included (4 minutes by default). Past
+   * it the job fails with `AI_TIMEOUT`, even if the generator ignores its abort signal.
    */
   jobTimeoutMs?: number;
-  /** The same for applying one answer. */
+  /** The same for applying one answer (2 minutes by default). */
   answerTimeoutMs?: number;
   /** Wait between queue checks while there is nothing to do. */
   pollIntervalMs?: number;
@@ -50,7 +50,10 @@ interface Options {
   maxAttempts?: number;
 }
 
-/** Another run claimed the job after this one went stale; this run must not write anymore. */
+/**
+ * The job is no longer this run's: another run claimed it after this one went stale, or its CV was
+ * deleted (which deletes its jobs). This run must not write anymore.
+ */
 class LeaseLostError extends Error {
   override name = 'LeaseLostError';
 }
@@ -155,7 +158,7 @@ export function createGenerationWorker({
       else await applyAnswer(job, lease, signal, log);
     } catch (error) {
       if (error instanceof LeaseLostError || controller.signal.reason instanceof LeaseLostError) {
-        log.warn('Another run took over this job; dropping this one');
+        log.warn('The job is gone (taken over by another run, or its CV was deleted); dropping it');
       } else if (controller.signal.aborted && stopping) {
         await repository.release(lease);
         log.info('Interrupted by shutdown; job returned to the queue');

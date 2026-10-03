@@ -35,7 +35,11 @@ export function createApiRouter(deps: AppDeps): Router {
     sessionTokens: deps.auth.sessionTokens,
   });
   const sessionCookie = createSessionCookie({ secure: deps.auth.secureCookies });
-  const cvsService = createCvsService(repositories.cvs);
+  const cvsService = createCvsService({
+    cvs: repositories.cvs,
+    storage: deps.fileStorage,
+    logger: deps.logger,
+  });
   const sourceDocumentsService = createSourceDocumentsService({
     cvs: repositories.cvs,
     documents: repositories.sourceDocuments,

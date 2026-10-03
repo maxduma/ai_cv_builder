@@ -6,6 +6,8 @@ import type { SourceDocumentDto } from './source-document';
 
 export const TARGET_ROLE_MIN_LENGTH = 2;
 export const TARGET_ROLE_MAX_LENGTH = 120;
+/** A CV's name: its target role is a name too, so it fits the same length. */
+export const CV_TITLE_MAX_LENGTH = 120;
 /**
  * Experience in the user's own words: enough to describe a role, and room for a whole CV pasted in
  * as text (about 3,000 words). A longer CV goes in as a PDF, which may carry more.
@@ -35,6 +37,16 @@ const targetRole = clearableText(
 
 const sourceText = clearableText(z.string().trim().max(SOURCE_TEXT_MAX_LENGTH));
 
+/**
+ * A CV's name: one line that can't be empty (unlike the fields above, `''` is an error, not a
+ * request to clear it). Line breaks and runs of spaces become one space; U+0000 is removed.
+ */
+export const cvTitle = z.preprocess(
+  (value) =>
+    typeof value === 'string' ? value.replaceAll('\u0000', '').replaceAll(/\s+/g, ' ') : value,
+  z.string().trim().min(1, 'Enter a name').max(CV_TITLE_MAX_LENGTH),
+);
+
 // Strict objects: unknown keys such as `userId` are rejected. Ownership always comes from the
 // authenticated user, never from the request body.
 export const CreateCvRequestSchema = z.strictObject({
@@ -44,8 +56,9 @@ export const CreateCvRequestSchema = z.strictObject({
 
 export type CreateCvRequest = z.infer<typeof CreateCvRequestSchema>;
 
-/** Saves the target role and/or the free-text source of a CV. */
+/** Renames a CV and/or saves its target role and free-text source. */
 export const UpdateCvRequestSchema = z.strictObject({
+  title: cvTitle.optional(),
   targetRole: targetRole.optional(),
   sourceText: sourceText.optional(),
 });
@@ -64,6 +77,7 @@ export type CvStatus = 'draft' | 'generating' | 'failed' | 'ready';
 
 export interface CvSummary {
   id: string;
+  /** The CV's name: its target role until the person renames it. */
   title: string;
   targetRole: string | null;
   status: CvStatus;

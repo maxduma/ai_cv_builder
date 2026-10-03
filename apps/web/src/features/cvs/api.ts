@@ -13,7 +13,13 @@ import {
   type UpdateCvRequest,
   type UpdateQuestionRequest,
 } from '@cv-builder/shared';
-import { type QueryClient, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  type QueryClient,
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { ApiError, api, type UploadOptions } from '../../lib/api-client';
 
@@ -65,6 +71,7 @@ export function useGenerationJob(job: GenerationJobDto | null) {
 export const cvsApi = {
   create: (input: CreateCvRequest) => api.post<CvDetail>('/cvs', input),
   update: (cvId: string, input: UpdateCvRequest) => api.patch<CvDetail>(`/cvs/${cvId}`, input),
+  remove: (cvId: string) => api.delete(`/cvs/${cvId}`),
   uploadSourceDocument: (cvId: string, file: File, options: UploadOptions) =>
     api.upload<SourceDocumentDto>(`/cvs/${cvId}/source-document`, file, options),
   removeSourceDocument: (cvId: string) => api.delete(`/cvs/${cvId}/source-document`),
@@ -81,6 +88,59 @@ export const cvsApi = {
     return { blob, pageCount: Number(headers.get('X-Page-Count')) || null };
   },
 };
+
+/**
+ * A CV's new name, as the API saved it: the card in the cached list shows it at once, in the same
+ * place (the list moves the CV up on its next fetch, as it was just updated). The CV's own page
+ * is fetched again if something is showing it.
+ */
+export function cacheRenamedCv(queryClient: QueryClient, cv: CvDetail) {
+  queryClient.setQueryData<CvListResponse>(cvKeys.list(), (list) =>
+    list
+      ? {
+          items: list.items.map((item) =>
+            item.id === cv.id ? { ...item, title: cv.title, updatedAt: cv.updatedAt } : item,
+          ),
+        }
+      : list,
+  );
+  void queryClient.invalidateQueries({ queryKey: cvKeys.detail(cv.id) });
+}
+
+/**
+ * A deleted CV leaves the cached list and its page is forgotten. A list fetch that started before
+ * the delete is cancelled first: it would put the CV back.
+ */
+export async function forgetCv(queryClient: QueryClient, cvId: string) {
+  await queryClient.cancelQueries({ queryKey: cvKeys.list() });
+  queryClient.setQueryData<CvListResponse>(cvKeys.list(), (list) =>
+    list ? { items: list.items.filter((cv) => cv.id !== cvId) } : list,
+  );
+  queryClient.removeQueries({ queryKey: cvKeys.detail(cvId) });
+}
+
+export function useRenameCv() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ cvId, title }: { cvId: string; title: string }) =>
+      cvsApi.update(cvId, { title }),
+    onSuccess: (cv) => cacheRenamedCv(queryClient, cv),
+  });
+}
+
+/** Deletes a CV on the server; the caller takes it off the screen with `forgetCv`. */
+export function useDeleteCv() {
+  return useMutation({
+    mutationFn: async (cvId: string) => {
+      try {
+        await cvsApi.remove(cvId);
+      } catch (error) {
+        // Already gone, e.g. deleted in another tab: the result is the one that was asked for.
+        if (!(error instanceof ApiError && error.status === 404)) throw error;
+      }
+    },
+  });
+}
 
 /**
  * Records a question the API just changed (answered, skipped, dismissed) in the CV's cached

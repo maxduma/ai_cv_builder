@@ -249,6 +249,20 @@ export function createInMemoryRepositories() {
       async existsForUser(userId, cvId) {
         return !!findCv(userId, cvId);
       },
+      async findNames(userId, cvId) {
+        const cv = findCv(userId, cvId);
+        return cv ? { title: cv.title, targetRole: cv.targetRole } : null;
+      },
+      async removeForUser(userId, cvId) {
+        const cv = findCv(userId, cvId);
+        if (!cv) return null;
+        // What the foreign keys cascade to in the database.
+        const storageKeys = takeDocuments(userId, cvId);
+        db.jobs = db.jobs.filter((job) => job.cvId !== cvId);
+        db.questions = db.questions.filter((question) => question.cvId !== cvId);
+        db.cvs = db.cvs.filter((row) => row !== cv);
+        return storageKeys;
+      },
       async create(userId, data) {
         const createdAt = now();
         const cv: CvRow = {

@@ -6,11 +6,16 @@ import type { GenerationInput } from './generation.input';
 
 interface Options {
   /** How long each of the four steps takes. */
-  stepMs: number;
+  stepMs?: number;
   /** Share of runs that fail (0–1), so the failure screen can be tried out. */
-  failRate: number;
+  failRate?: number;
   random?: () => number;
 }
+
+/** The pace of the demo: four steps of 2.5 s, about as long as the design's progress screen. */
+const STEP_MS = 2_500;
+/** Raise it to 1 to see the failure screen: every run then fails. */
+const FAIL_RATE = 0;
 
 /** Fails while "writing your experience", where the design's failure example stops. */
 const FAILING_STEP = 2;
@@ -47,10 +52,10 @@ const SAMPLE_ISSUES: GenerationIssue[] = [
  * sample content built from the target role, with sample questions.
  */
 export function createMockCvGenerator({
-  stepMs,
-  failRate,
+  stepMs = STEP_MS,
+  failRate = FAIL_RATE,
   random = Math.random,
-}: Options): CvGenerator {
+}: Options = {}): CvGenerator {
   return {
     async generate(input, { signal, onStep }) {
       const fails = random() < failRate;

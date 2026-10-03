@@ -56,13 +56,8 @@ services:
       PORT: '4000'
       DATABASE_URL: postgresql://cvbuilder:cvbuilder@db:5432/cvbuilder
       UPLOAD_DIR: /data/uploads
-      JWT_SECRET: ${JWT_SECRET:-}
+      # The only value read from .env. Without it the API runs on mocks (demo mode).
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-}
-      GENERATION_TIMEOUT_MS: ${GENERATION_TIMEOUT_MS:-}
-      LOG_LEVEL: ${LOG_LEVEL:-}
-      MOCK_GENERATION_STEP_MS: ${MOCK_GENERATION_STEP_MS:-}
-      MOCK_GENERATION_FAIL_RATE: ${MOCK_GENERATION_FAIL_RATE:-}
       PRISMA_HIDE_UPDATE_MESSAGE: '1'
     ports:
       - '127.0.0.1:${API_PORT:-4000}:4000'

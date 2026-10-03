@@ -17,6 +17,11 @@ export class ApiError extends Error {
   }
 }
 
+/** What to tell the person about a failed request: the API's own wording, or a general one. */
+export function errorMessage(error: unknown): string {
+  return error instanceof ApiError ? error.message : 'Something went wrong. Try again in a moment.';
+}
+
 const networkError = () =>
   new ApiError(0, 'NETWORK_ERROR', 'Cannot reach the server. Check your connection.');
 

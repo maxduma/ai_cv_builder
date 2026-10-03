@@ -292,6 +292,20 @@ export function LogoutIcon(props: IconProps) {
   );
 }
 
+/** A pencil: Rename. */
+export function PencilIcon(props: IconProps) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" {...props}>
+      <path
+        d="M10.4 3.1C10.95 2.55 11.85 2.55 12.4 3.1L12.9 3.6C13.45 4.15 13.45 5.05 12.9 5.6L6.1 12.4L3 13L3.6 9.9L10.4 3.1Z"
+        {...stroke}
+        strokeWidth="1.4"
+      />
+      <path d="M9.25 4.25L11.75 6.75" {...stroke} strokeWidth="1.4" strokeLinecap="butt" />
+    </svg>
+  );
+}
+
 /** Three dots: an entry's "more actions" menu. */
 export function MoreIcon(props: IconProps) {
   return (

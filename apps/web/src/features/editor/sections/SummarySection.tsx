@@ -1,7 +1,8 @@
 import { CV_LIMITS } from '@cv-builder/shared';
 import { useState } from 'react';
+import { classes } from '../../../lib/classes';
 import type { SectionProps } from './section-props';
-import { SectionCard, classes, startsNarrow } from './SectionCard';
+import { SectionCard, startsNarrow } from './SectionCard';
 
 /** The design's advice: a summary reads best at 40–70 words. */
 const WORDS_MIN = 40;

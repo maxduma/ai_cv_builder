@@ -50,7 +50,9 @@
 }
 
 .btn-primary:disabled:not([aria-busy='true']),
-.btn-primary[aria-disabled='true'] {
+.btn-danger:disabled:not([aria-busy='true']),
+.btn-primary[aria-disabled='true'],
+.btn-danger[aria-disabled='true'] {
   background: #e7e7ec;
   color: #8d8d97;
   box-shadow: inset 0 0 0 1px rgba(17, 17, 26, 0.06);
@@ -129,6 +131,36 @@
     0 0 0 1px color-mix(in oklab, var(--accent) 72%, #000);
 }
 
+.btn-danger {
+  background: linear-gradient(180deg, #e0392c, #c4291c);
+  color: #fff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 0 0 1px #a61f14,
+    0 4px 12px -4px rgba(196, 41, 28, 0.5);
+}
+
+.btn-danger:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 0 0 1px #a61f14,
+    0 10px 22px -8px rgba(196, 41, 28, 0.55);
+}
+
+.btn-danger:active:not(:disabled) {
+  transform: scale(0.98);
+  filter: brightness(0.95);
+  box-shadow:
+    inset 0 1px 2px rgba(0, 0, 0, 0.22),
+    0 0 0 1px #a61f14;
+}
+
+.btn-danger:focus-visible {
+  outline-color: var(--danger);
+}
+
 .btn-primary.is-loading {
   cursor: progress;
   filter: saturate(0.9);
@@ -181,6 +213,24 @@
   border-right-color: transparent;
   border-radius: 999px;
   animation: cvb-spin 700ms linear infinite;
+}
+
+/* A key shown as a hint: "R" next to Rename, "↵ save · Esc cancel". */
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 5px;
+  background: #f2f2f5;
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
 }
 
 /* ---------- links ---------- */
@@ -579,6 +629,116 @@
   height: 6px;
   background: var(--danger);
   box-shadow: 0 0 0 3px rgba(217, 45, 32, 0.16);
+}
+
+/* ---------- toast: a dark note at the bottom (the editor's undo, the dashboard's "Deleted") ---------- */
+.toast-region {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 24px;
+  z-index: 60;
+  display: flex;
+  justify-content: center;
+  padding: 0 16px;
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 520px;
+  min-height: 44px;
+  padding: 6px 6px 6px 12px;
+  border-radius: 12px;
+  background: #17171c;
+  color: #e9e9ee;
+  box-shadow:
+    0 20px 44px -16px rgba(10, 10, 16, 0.55),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+  animation: cvb-toast-in var(--dur-slow) var(--ease-menu) both;
+}
+
+.toast-ico {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #c9c9d3;
+}
+
+.toast-ico svg {
+  display: block;
+}
+
+.toast-text {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes cvb-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes cvb-toast-out {
+  to {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+}
+
+.toast.is-leaving {
+  animation: cvb-toast-out 180ms var(--ease-in) forwards;
+}
+
+/* A confirmation without a button, in the design's wording: green tick, the name in white. */
+.toast.is-note {
+  max-width: 460px;
+  padding: 10px 16px 10px 12px;
+}
+
+.toast-ico.is-success {
+  background: rgba(74, 222, 128, 0.16);
+  color: #6ee7a1;
+}
+
+.toast-text strong {
+  color: #fff;
+  font-weight: 600;
+}
+
+/* A page's own toast sits where the design puts it, not above the editor's bottom bar. */
+.toast-region.for-page {
+  bottom: 24px;
+}
+
+@media (max-width: 599px) {
+  .toast-region.for-page {
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .toast.is-note {
+    width: 100%;
+    padding: 10px 16px 10px 12px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

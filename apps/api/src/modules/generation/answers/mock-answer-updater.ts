@@ -7,11 +7,16 @@ import type { AnswerUpdate } from './answer-update.schema';
 
 interface Options {
   /** How long an update takes, so its progress can be seen. */
-  stepMs: number;
+  stepMs?: number;
   /** Share of updates that fail (0–1), so the failure state can be tried out. */
-  failRate: number;
+  failRate?: number;
   random?: () => number;
 }
+
+/** How long a mock answer takes to apply, so its "Updating…" can be seen. */
+const STEP_MS = 2_500;
+/** Raise it to 1 to see the failure state: every update then fails. */
+const FAIL_RATE = 0;
 
 /** Answers the mock treats as too vague, to try out the follow-up question. */
 const VAGUE = /^(not sure|idk|\?+)$/i;
@@ -27,10 +32,10 @@ const TRAILING_PUNCTUATION = /[.,;:!?)]+$/;
  * a degree, a work setup...), so the whole flow can be tried without the API.
  */
 export function createMockAnswerUpdater({
-  stepMs,
-  failRate,
+  stepMs = STEP_MS,
+  failRate = FAIL_RATE,
   random = Math.random,
-}: Options): AnswerUpdater {
+}: Options = {}): AnswerUpdater {
   return {
     async apply(request, { signal }) {
       await sleep(stepMs, undefined, { signal });
