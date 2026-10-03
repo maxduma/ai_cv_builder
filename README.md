@@ -2,7 +2,7 @@
 
 A fullstack app that turns a PDF or a few notes plus a target role into a CV draft written by Claude, which you review, edit and download as an A4 PDF. Built as a take-home assignment.
 
-**Status:** the whole flow works end to end. You sign up, create a CV from a PDF and/or notes, follow the generation (a background job that survives reloads), answer the questions the AI asks about what is missing, edit every field, and download the PDF. 563 automated tests (plus 16 on PostgreSQL) cover the API, the shared code and the editor's autosave.
+**Status:** the whole flow works end to end. You sign up, create a CV from a PDF and/or notes, follow the generation (a background job that survives reloads), answer the questions the AI asks about what is missing, edit every field, and download the PDF. 566 automated tests (plus 16 on PostgreSQL) cover the API, the shared code and the editor's autosave.
 
 | Layer    | Stack                                                                                    |
 | -------- | ---------------------------------------------------------------------------------------- |
