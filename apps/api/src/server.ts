@@ -56,8 +56,10 @@ async function main(): Promise<void> {
   const prisma = createPrismaClient(config.databaseUrl);
 
   if (config.auth.usingDevJwtSecret) {
-    // Production refuses to start without JWT_SECRET (see config/env.ts).
-    logger.warn('JWT_SECRET is not set: sessions are signed with the public development secret.');
+    // Expected in development; production refuses to start without JWT_SECRET (see config/env.ts).
+    logger.info(
+      'JWT_SECRET is not set: sessions use the public development secret (development only)',
+    );
   }
 
   const repositories = createRepositories(prisma);
