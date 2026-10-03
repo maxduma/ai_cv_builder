@@ -21,7 +21,7 @@
   max-width: 1376px;
   height: 56px;
   margin: 0 auto;
-  padding: 0 32px;
+  padding: 0 max(32px, var(--safe-right)) 0 max(32px, var(--safe-left));
 }
 
 .fp-bar .back-link {
@@ -179,7 +179,7 @@
 .fp-main {
   max-width: 1376px;
   margin: 0 auto;
-  padding: 24px 32px 48px;
+  padding: 24px max(32px, var(--safe-right)) 48px max(32px, var(--safe-left));
 }
 
 .fp-layout {
@@ -565,7 +565,8 @@
     bottom: 0;
     z-index: 30;
     display: block;
-    padding: 12px 32px calc(12px + env(safe-area-inset-bottom, 0px));
+    padding: 12px max(32px, var(--safe-right)) calc(12px + env(safe-area-inset-bottom, 0px))
+      max(32px, var(--safe-left));
     background: rgba(255, 255, 255, 0.9);
     -webkit-backdrop-filter: saturate(180%) blur(16px);
     backdrop-filter: saturate(180%) blur(16px);
@@ -651,6 +652,7 @@
 
   .fp-panel.is-ready .fp-card {
     max-height: calc(100vh - 48px);
+    max-height: calc(100dvh - 48px);
     overflow: auto;
     padding: 10px 20px calc(20px + env(safe-area-inset-bottom, 0px));
     border-width: 1px 0 0;
@@ -780,5 +782,16 @@
   .fp-mbar .btn {
     height: 46px;
     font-size: 15px;
+  }
+}
+
+/* A phone held sideways has little height: the bar scrolls away instead of staying pinned. */
+@media (max-height: 500px) {
+  .fp-bar {
+    position: static;
+  }
+
+  .fp-panel {
+    top: 24px;
   }
 }

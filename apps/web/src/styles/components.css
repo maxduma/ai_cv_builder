@@ -427,9 +427,20 @@
     font-size: 14px;
   }
 
-  .icon-btn {
+  .icon-btn,
+  .control > .icon-btn {
     width: 44px;
     height: 44px;
+  }
+
+  /* The field is 44px tall, so its button fills the right edge. */
+  .control > .icon-btn {
+    top: 0;
+    right: 0;
+  }
+
+  .input.has-clear {
+    padding-right: 48px;
   }
 }
 
