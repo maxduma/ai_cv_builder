@@ -1,6 +1,7 @@
 import type { CvContent } from '@cv-builder/shared';
+import { Link } from 'react-router';
 import { CvPage } from '../../ui/CvPage';
-import { CheckCircleIcon } from '../../ui/icons';
+import { CheckCircleIcon, ExternalArrowIcon } from '../../ui/icons';
 import { estimatePages, pageLabel } from './estimate-pages';
 import './cv-preview.css';
 
@@ -34,7 +35,7 @@ function WarningIcon() {
  * as the page count in the header. The fit note isn't a live region: it would speak on every
  * keystroke. Hidden below 1024px, where there is no room beside the form.
  */
-export function CvPreview({ content }: { content: CvContent }) {
+export function CvPreview({ cvId, content }: { cvId: string; content: CvContent }) {
   const { pages, fill } = estimatePages(content);
   const fits = pages === 1;
 
@@ -43,6 +44,10 @@ export function CvPreview({ content }: { content: CvContent }) {
       <div className="pv-head">
         <h2 className="pv-title">Live preview</h2>
         <span className="pv-meta">{pageLabel(pages)}</span>
+        <Link to={`/cvs/${cvId}/preview`} className="pv-full">
+          <span>Full preview</span>
+          <ExternalArrowIcon />
+        </Link>
       </div>
       <div className="pv-stage">
         <div className="pv-frame">

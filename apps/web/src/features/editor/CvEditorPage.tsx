@@ -1,12 +1,7 @@
-import type { CvContent, CvDetail } from '@cv-builder/shared';
-import { Link, Navigate, useParams } from 'react-router';
-import { ApiError } from '../../lib/api-client';
-import { NotFoundPage } from '../../pages/NotFoundPage';
-import { AlertCircleIcon, RetryIcon } from '../../ui/icons';
-import { StateIcon, StatePanel } from '../../ui/StatePanel';
-import { useCv, useQuestionUpdates } from '../cvs/api';
+import { useParams } from 'react-router';
+import { type ReadyCv, ReadyCvGate } from '../cvs/ReadyCvGate';
 import { CvPreview } from './CvPreview';
-import { EditorBar, SaveStatusText } from './EditorBar';
+import { EditorBar, PreviewLink, SaveStatusText } from './EditorBar';
 import { estimatePages, pageLabel } from './estimate-pages';
 import { QuestionsPanel } from './QuestionsPanel';
 import { ContactSection } from './sections/ContactSection';
@@ -33,75 +28,14 @@ const SECTIONS = [
  */
 export function CvEditorPage() {
   const { cvId = '' } = useParams();
-  const { data: cv, error, refetch, isFetching } = useCv(cvId);
-  useQuestionUpdates(cv);
-
-  // A failed background refetch keeps the CV on screen: only a first load can fail here.
-  if (!cv) {
-    if (error instanceof ApiError && (error.status === 404 || error.status === 400)) {
-      return <NotFoundPage />;
-    }
-    if (error) {
-      return (
-        <main className="page-main">
-          <StatePanel
-            tone="error"
-            headingLevel="h1"
-            visual={
-              <StateIcon tone="error">
-                <AlertCircleIcon />
-              </StateIcon>
-            }
-            title="We couldn’t open this CV"
-            description="Your CV is safe — this is usually a connection problem. Check your internet and try again."
-            action={
-              <button
-                type="button"
-                className="btn btn-primary empty-cta"
-                aria-busy={isFetching}
-                disabled={isFetching}
-                onClick={() => void refetch()}
-              >
-                <RetryIcon />
-                <span>Try again</span>
-              </button>
-            }
-          />
-        </main>
-      );
-    }
-    return <main className="ed-main" aria-busy="true" />;
-  }
-
-  // Only a generated CV has anything to edit.
-  if (cv.status === 'draft') return <Navigate to={`/cvs/${cv.id}/edit`} replace />;
-  if (cv.status !== 'ready') return <Navigate to={`/cvs/${cv.id}`} replace />;
-  if (!cv.content) {
-    return (
-      <main className="page-main">
-        <StatePanel
-          tone="error"
-          headingLevel="h1"
-          visual={
-            <StateIcon tone="error">
-              <AlertCircleIcon />
-            </StateIcon>
-          }
-          title="We couldn’t open this CV"
-          description="Its content couldn’t be read. Your other CVs aren’t affected."
-          action={
-            <Link to="/" className="btn btn-secondary">
-              Back to My CVs
-            </Link>
-          }
-        />
-      </main>
-    );
-  }
-  return <Editor key={cv.id} cv={{ ...cv, content: cv.content }} />;
+  return (
+    <ReadyCvGate cvId={cvId} loadingClassName="ed-main">
+      {(cv) => <Editor key={cv.id} cv={cv} />}
+    </ReadyCvGate>
+  );
 }
 
-function Editor({ cv }: { cv: CvDetail & { content: CvContent } }) {
+function Editor({ cv }: { cv: ReadyCv }) {
   const [{ draft, status, errors, undo, live }, session] = useEditorSession(cv);
   const pages = pageLabel(estimatePages(draft).pages);
 
@@ -129,14 +63,15 @@ function Editor({ cv }: { cv: CvDetail & { content: CvContent } }) {
             <EducationSection {...sectionProps} />
             <SkillsSection {...sectionProps} />
           </div>
-          <CvPreview content={draft} />
+          <CvPreview cvId={cv.id} content={draft} />
         </div>
       </main>
 
-      {/* Below 1024px the preview is hidden and the save status moves down here. */}
+      {/* Below 1024px the preview is hidden; the save status and the way on move down here. */}
       <div className="ed-mbar">
         <div className="ed-mbar-in">
           <SaveStatusText status={status} savedLabel={`${pages} · saved`} onRetry={retry} />
+          <PreviewLink cvId={cv.id} />
         </div>
       </div>
 

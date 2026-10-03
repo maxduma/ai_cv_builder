@@ -75,6 +75,11 @@ export const cvsApi = {
     api.post<CvQuestionDto>(`/cvs/${cvId}/questions/${questionId}/answers`, input),
   updateQuestion: (cvId: string, questionId: string, input: UpdateQuestionRequest) =>
     api.patch<CvQuestionDto>(`/cvs/${cvId}/questions/${questionId}`, input),
+  /** The CV's saved content as a PDF, and how many pages it has (`null` if the API didn't say). */
+  downloadPdf: async (cvId: string, signal?: AbortSignal) => {
+    const { blob, headers } = await api.download(`/cvs/${cvId}/pdf`, signal);
+    return { blob, pageCount: Number(headers.get('X-Page-Count')) || null };
+  },
 };
 
 /**

@@ -1,7 +1,7 @@
 import type { CvDetail } from '@cv-builder/shared';
 import { Link } from 'react-router';
 import { StatusChip } from '../../ui/StatusChip';
-import { ArrowLeftIcon, CheckIcon, ErrorIcon } from '../../ui/icons';
+import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, ErrorIcon } from '../../ui/icons';
 import type { SaveStatus } from './editor-session';
 
 /**
@@ -48,7 +48,26 @@ export function SaveStatusText({
   );
 }
 
-/** The editor's bar under the app header: back to My CVs, the CV's name and the save status. */
+/**
+ * "Preview & download". A link in this tab: edits still waiting to be saved are saved on the way,
+ * which a new tab couldn't do.
+ */
+export function PreviewLink({ cvId, className }: { cvId: string; className?: string }) {
+  return (
+    <Link
+      to={`/cvs/${cvId}/preview`}
+      className={className ? `btn btn-primary ${className}` : 'btn btn-primary'}
+    >
+      <span>Preview &amp; download</span>
+      <ArrowRightIcon />
+    </Link>
+  );
+}
+
+/**
+ * The editor's bar under the app header: back to My CVs, the CV's name, the save status and the
+ * way on to the preview and the PDF (in the bottom bar on small screens).
+ */
 export function EditorBar({
   cv,
   status,
@@ -71,6 +90,7 @@ export function EditorBar({
           <StatusChip status={cv.status} />
         </span>
         <SaveStatusText status={status} onRetry={onRetry} />
+        <PreviewLink cvId={cv.id} className="ed-cta" />
       </div>
     </div>
   );
