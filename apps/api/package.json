@@ -8,6 +8,7 @@
     "start": "tsx src/server.ts",
     "typecheck": "prisma generate && tsc --noEmit",
     "test": "prisma generate && vitest run",
+    "test:db": "prisma generate && vitest run src/db",
     "db:generate": "prisma generate",
     "db:deploy": "prisma migrate deploy",
     "db:migrate": "sh -c 'prisma migrate dev \"$@\" && prisma generate' --",
