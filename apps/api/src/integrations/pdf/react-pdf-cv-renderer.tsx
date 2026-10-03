@@ -118,7 +118,7 @@ export async function countPdfPages(pdf: Uint8Array): Promise<number> {
 
 /**
  * Renders CVs with React-PDF: the design's CV template with Geist embedded (Latin, Cyrillic),
- * A4 pages and real text. Rendering is CPU work on this thread; see the README for timings.
+ * A4 pages and real text. Rendering is CPU work on this thread; see docs/architecture.md (PDF export) for timings.
  */
 export function createReactPdfCvRenderer(): CvPdfRenderer {
   registerFonts();

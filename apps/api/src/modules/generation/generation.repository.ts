@@ -88,7 +88,7 @@ export interface JobFailure {
   message: string;
 }
 
-/** Data access for generation jobs: Postgres is the queue (see README, "CV generation"). */
+/** Data access for generation jobs: Postgres is the queue (see docs/architecture.md, "CV generation as a persistent job"). */
 export function createGenerationRepository(prisma: PrismaClient) {
   const held = (lease: JobLease) => ({
     id: lease.jobId,
