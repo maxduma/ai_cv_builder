@@ -92,6 +92,35 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return payload as T;
 }
 
+/**
+ * Downloads a file from the API (a CV's PDF): the body as a Blob, with the response headers. An
+ * error answers with the usual JSON body, read like any other request's. Aborting `signal`
+ * rejects with its `AbortError`.
+ */
+async function download(path: string, signal?: AbortSignal) {
+  let response: Response;
+  try {
+    response = await fetch(`/api${path}`, { signal });
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    throw networkError();
+  }
+
+  if (!response.ok) {
+    const payload = parseJson(await response.text().catch(() => ''));
+    const error = toApiError(response.status, payload);
+    reportIfSessionEnded(path, error);
+    throw error;
+  }
+  try {
+    return { blob: await response.blob(), headers: response.headers };
+  } catch (error) {
+    // The connection dropped halfway through the file.
+    if (signal?.aborted) throw error;
+    throw networkError();
+  }
+}
+
 function isApiErrorBody(value: unknown): value is ApiErrorBody {
   return (
     typeof value === 'object' &&
@@ -159,4 +188,5 @@ export const api = {
   /** PUT of a file, with upload progress. */
   upload: <T>(path: string, file: File, options?: UploadOptions) =>
     upload<T>('PUT', path, file, options),
+  download: (path: string, signal?: AbortSignal) => download(path, signal),
 };

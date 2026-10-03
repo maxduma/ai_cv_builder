@@ -29,6 +29,36 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* "Full preview": the way on to the preview page and the PDF. */
+.pv-full {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  margin-left: auto;
+  padding: 0 8px;
+  border-radius: 7px;
+  color: color-mix(in oklab, var(--accent) 86%, #000);
+  font-size: 13px;
+  font-weight: 550;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background-color var(--dur-fast) ease;
+}
+
+.pv-full:hover {
+  background: color-mix(in oklab, var(--accent) 7%, transparent);
+}
+
+.pv-full:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.pv-full svg {
+  display: block;
+}
+
 /* A dotted desk under the page. */
 .pv-stage {
   padding: 18px;

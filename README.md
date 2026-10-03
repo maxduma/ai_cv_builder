@@ -2,7 +2,7 @@
 
 A fullstack app for building tailored CVs with Claude.
 
-**Status:** the main flow works end to end. Users sign up and log in with an email and password; "My CVs" lists their CVs; "Create a new CV" takes a target role plus an uploaded PDF and/or a description, and Claude writes the CV in a background job whose progress the UI follows. Claude also asks a few questions about what is missing or vague; each answer updates its section of the CV in the background. The structured editor (contact, summary, experience, education, skills, with a live A4 preview) saves edits automatically. PDF export comes in a later step (see [Roadmap](#roadmap)).
+**Status:** the main flow works end to end. Users sign up and log in with an email and password; "My CVs" lists their CVs; "Create a new CV" takes a target role plus an uploaded PDF and/or a description, and Claude writes the CV in a background job whose progress the UI follows. Claude also asks a few questions about what is missing or vague; each answer updates its section of the CV in the background. The structured editor (contact, summary, experience, education, skills, with a live A4 preview) saves edits automatically. "Preview & download" shows the CV at full size and downloads it as an A4 PDF, which the API renders from the saved CV.
 
 | Layer    | Stack                                                                       |
 | -------- | --------------------------------------------------------------------------- |
@@ -10,6 +10,7 @@ A fullstack app for building tailored CVs with Claude.
 | API      | Node.js 22, TypeScript, Express 5 (REST), Zod 4, pino                       |
 | Database | PostgreSQL 17, Prisma 7                                                     |
 | AI       | Anthropic API: Claude Opus 5.5 with structured output (`@anthropic-ai/sdk`) |
+| PDF      | React-PDF (`@react-pdf/renderer`) on the API, with Geist embedded           |
 | Tooling  | Docker Compose, pnpm workspaces, Vitest, ESLint, Prettier                   |
 
 ## Quick start
@@ -92,9 +93,10 @@ apps/
                             source-documents (PDF upload), questions (the AI's questions and
                             answers), generation (jobs and worker for generations and answers,
                             Claude in claude/, answers/ for applying an answer, the
-                            development mocks)
+                            development mocks), cv-pdf (the PDF download)
       integrations/         ai (Anthropic client), storage (uploaded files on disk),
-                            extraction (PDF → text with unpdf)
+                            extraction (PDF → text with unpdf), pdf (CV → A4 PDF with
+                            React-PDF; the Geist fonts in pdf/fonts)
       lib/                  logger, error types
       test/                 in-memory repositories and app harness for tests
       generated/prisma/     generated Prisma client (git-ignored)
@@ -105,13 +107,15 @@ apps/
       features/cvs/         dashboard (My CVs), create (the form), status (generation progress)
       features/clarify/     "A few quick questions": answering the AI's questions after a draft
       features/editor/      the CV editor: sections, live preview, autosave session, questions card
+      features/preview/     the CV at full size and the PDF download
       ui/                   shared pieces from the design: status chips, state panels, CV page and
                             thumbnail, icons
       styles/               design tokens and base/component CSS (from the design canvas)
       lib/                  API client (incl. upload with progress), query client, formatting
 packages/
   shared/                   types and Zod schemas shared by web and api (DTOs, error shape, enums),
-                            and the three-way merge of CV content both sides use
+                            the three-way merge of CV content both sides use, and the CV as its
+                            page shows it (cv-view.ts), which the preview and the PDF both draw
 docker-compose.yml          db + api + web for local development
 Dockerfile.dev              dev image: Node 22 + pnpm + installed dependencies
 ```
@@ -135,7 +139,7 @@ Each concern has its own place, so it can be reviewed and replaced on its own:
 - **HTTP** (`http/`, `modules/*/*.routes.ts`): Express wiring. Route handlers validate input with the shared Zod schemas, call a service, and map results to DTOs. They contain no business logic.
 - **Business logic** (`modules/*/*.service.ts`): framework-agnostic. Services take the acting user's id plus validated input.
 - **Data access** (`modules/*/*.repository.ts`, `db/`): every Prisma query lives here and is scoped to the owning user. Mappers make sure database rows never leak to HTTP.
-- **Integrations**: `integrations/ai` (Anthropic), `integrations/storage` (uploaded files) and `integrations/extraction` (PDF/DOCX to text); `integrations/pdf` (CV rendering) is planned. Each sits behind a small interface used by the services.
+- **Integrations**: `integrations/ai` (Anthropic), `integrations/storage` (uploaded files), `integrations/extraction` (PDF/DOCX to text) and `integrations/pdf` (CV to PDF). Each sits behind a small interface used by the services.
 
 Dependencies are wired by hand in `http/router.ts` (repositories, then services, then routers); there is no DI container. `createApp()` takes all of its dependencies as arguments, so tests run it with stubs on a random port.
 
@@ -163,6 +167,7 @@ Apart from `/api/health` and signing up, logging in and logging out, every route
 | `PUT /api/cvs/:cvId/source-document`                | Upload the source PDF (multipart field `file`); replaces the previous one                                                                        |
 | `DELETE /api/cvs/:cvId/source-document`             | Remove the source PDF                                                                                                                            |
 | `PUT /api/cvs/:cvId/content`                        | Save edited content `{ baseVersion, content }` → `{ contentVersion }`; `409 CONTENT_CONFLICT` with the newer content when `baseVersion` is stale |
+| `GET /api/cvs/:cvId/pdf`                            | The CV as saved now, as an A4 PDF to download (`X-Page-Count` gives its pages); `409 CV_NOT_GENERATED` before it has content                     |
 | `POST /api/cvs/:cvId/generations`                   | Start generation → `202` + `Location`; `409` while one is running, or once the CV has content                                                    |
 | `POST /api/cvs/:cvId/questions/:questionId/answers` | Answer a question `{ answer }` → `202` + `Location` of the job that applies it                                                                   |
 | `PATCH /api/cvs/:cvId/questions/:questionId`        | Skip or dismiss a question `{ status: "skipped" \| "dismissed" }`                                                                                |
@@ -275,6 +280,16 @@ A failed job stores a code and a message. The CV's page shows the message, which
 | `AI_SCHEMA_MISMATCH`  | The answer didn't match the CV schema, twice                               |
 | `AI_INVALID_UPDATE`   | An answer's changes, merged into the CV, broke its rules; nothing changed  |
 
+### PDF export
+
+"Preview & download" in the editor opens the preview page (`/cvs/:id/preview`): the CV at full size, as its PDF will look, and the download. The API renders the PDF from the CV as saved (`GET /api/cvs/:id/pdf`). The page first saves any edits still waiting in the editor, so the PDF has the latest version; edits that can't be saved (a failed save, a value with an error) are left out, and the page says so.
+
+- **Rendering:** React-PDF (`integrations/pdf`) draws the design's CV template on A4 pages, from the same view of the content as the on-screen preview (`packages/shared/src/cv-view.ts`), so both agree on what is printed. The text is real text with Geist embedded (Regular, Medium, SemiBold and Bold; Latin and Cyrillic; SIL Open Font License, in `integrations/pdf/fonts`), so it can be selected and applicant tracking systems can read it. The email and web addresses are links. Section headings are tracked a little less than in the design (.08em, not .14em): PDF text extractors read wider gaps as spaces and would see "E X P E R I E N C E".
+- **Pages:** the template's blocks sit directly on the page, which is how React-PDF can keep them together. A section heading never ends a page; a role's title, company and first achievement stay together, and every further achievement moves to the next page whole. Paragraphs (the summary, a degree's details) flow on to the next page, never leaving one line behind. The content limits keep every unbreakable block shorter than a page, so nothing runs into the margins: a test renders the largest CV the limits allow and checks it.
+- **Speed:** rendering runs in the API process. A typical CV takes 30–50 ms (the first after the API starts about a second, as the fonts and the layout engine load); the largest the limits allow, about 54 pages, about 3 s, during which the API answers nothing else. A worker thread is the next step if exports become frequent.
+- **Limits:** characters Geist doesn't have (emoji, Chinese, Arabic and so on) print as blanks, as there is no fallback font. A word of 60 characters or more (in practice a URL) can break across lines, and React-PDF prints a hyphen at the break.
+- **File names:** the response calls the file `CV.pdf`: response headers are logged, and a person's name doesn't belong in logs. The page names the download after the person (`Alex_Morgan_CV.pdf`), and the name can be changed there.
+
 ## Decisions and trade-offs
 
 - **Postgres as the job queue** instead of Redis or BullMQ: it's one less service, the job state is transactional with the data it produces, and it's plenty for this workload.
@@ -284,10 +299,12 @@ A failed job stores a code and a message. The CV's page shows the message, which
   - Prisma `7.10.0` exactly. npm's `latest` tag for the `prisma` CLI points at an 8.0 release candidate.
   - TypeScript 6.0. typescript-eslint doesn't support TypeScript 7 yet.
   - React Router 7. v8 was released very recently.
+  - React-PDF `4.9.0` exactly, so the PDF's page layout only changes with a deliberate upgrade.
 - **Default ports:** API on 4000 and PostgreSQL on 54320, which avoids clashing with common local services on 3000 and 5432. Override them in `.env`.
 - **Stateless sessions:** the server keeps no session list, so logging out only removes the cookie. A token that leaked stays valid until it expires (7 days at most). Revoking tokens would need a session table or a per-user token version.
 - **No login rate limiting yet:** limiting by client IP needs `trust proxy` configured for whatever proxy runs in front of the API; without it every client shares the proxy's IP and one attacker could lock everyone out. It is a follow-up. Meanwhile every guess costs a full scrypt hash.
 - **Manual edits win:** when an applied answer and a manual edit change the same field, the edit is kept. A CV with content can't be generated again (`409 CV_ALREADY_GENERATED`): that would replace the person's edits, and regenerating comes later.
+- **PDFs with React-PDF, not a headless browser:** printing the HTML preview with Chromium would match it to the pixel, but would add a ~300 MB browser to the image and a process to keep alive. React-PDF is plain JavaScript; the template is drawn again from the same view of the CV, with the design's measurements.
 - **Whole-document saves:** each save sends the whole CV (a few KB). Patches per field would save bandwidth, but versioned whole-document saves plus a merge are simpler to get right.
 - **Sign-up reveals taken emails** (`409 EMAIL_TAKEN`), which a helpful sign-up form can't avoid without email verification. Login doesn't.
 
@@ -304,5 +321,5 @@ A failed job stores a code and a message. The CV's page shows the message, which
 2. ~~Document upload and text extraction~~
 3. ~~AI CV generation: persistent jobs and worker, Claude structured output, validation~~
 4. ~~CV editor and the AI's questions~~
-5. PDF export
+5. ~~PDF export~~
 6. ~~Authentication~~

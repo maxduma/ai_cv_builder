@@ -279,6 +279,11 @@ export function editorSessionFor(
   return session;
 }
 
+/** The editing session of a CV, if it has been opened since the page loaded; never creates one. */
+export function findEditorSession(cvId: string): EditorSession | undefined {
+  return sessions.get(cvId);
+}
+
 /**
  * Called when someone signs in: another user starts from the server's copies, while the same
  * user (back after their session expired) keeps their unsaved edits, and saves that failed

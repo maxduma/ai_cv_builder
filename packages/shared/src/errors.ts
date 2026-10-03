@@ -25,6 +25,8 @@ export const ERROR_CODES = [
   // Questions
   'QUESTION_BUSY',
   'QUESTION_CLOSED',
+  // PDF export
+  'PDF_RENDER_FAILED',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

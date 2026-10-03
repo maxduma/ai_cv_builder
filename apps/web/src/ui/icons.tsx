@@ -377,3 +377,38 @@ export function SmallArrowIcon({ size = 12, ...props }: IconProps & { size?: 12 
     </svg>
   );
 }
+
+/** An arrow down into a tray: download. */
+export function DownloadIcon(props: IconProps) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" {...props}>
+      <path d="M8 2.75V10M4.75 6.75L8 10L11.25 6.75M3 13H13" {...stroke} strokeWidth="1.6" />
+    </svg>
+  );
+}
+
+export function MinusIcon(props: IconProps) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" {...props}>
+      <path d="M3 7H11" {...stroke} strokeWidth="1.6" />
+    </svg>
+  );
+}
+
+/** An arrow out to the top right: "Full preview". */
+export function ExternalArrowIcon(props: IconProps) {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" {...props}>
+      <path d="M4.5 2.5H9.5V7.5M9.25 2.75L3 9" {...stroke} strokeWidth="1.4" />
+    </svg>
+  );
+}
+
+/** The large tick of "Your PDF is ready". */
+export function CheckLargeIcon(props: IconProps) {
+  return (
+    <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true" {...props}>
+      <path d="M6 11.5L9.5 15L16.5 7.5" {...stroke} strokeWidth="2.2" />
+    </svg>
+  );
+}

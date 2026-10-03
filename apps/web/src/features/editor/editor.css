@@ -430,7 +430,8 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .ed-bar .ed-save {
+  .ed-bar .ed-save,
+  .ed-bar .ed-cta {
     display: none;
   }
 
@@ -523,6 +524,11 @@
 
   .ed-mbar {
     padding: 10px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .ed-mbar-in .btn {
+    height: 46px;
+    font-size: 15px;
   }
 
   .ed-retry {

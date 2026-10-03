@@ -6,6 +6,7 @@ import { CreateCvPage, EditCvPage } from '../features/cvs/create/CreateCvPage';
 import { CvListPage } from '../features/cvs/dashboard/CvListPage';
 import { CvStatusPage } from '../features/cvs/status/CvStatusPage';
 import { CvEditorPage } from '../features/editor/CvEditorPage';
+import { CvPreviewPage } from '../features/preview/CvPreviewPage';
 import { NotFoundPage } from '../pages/NotFoundPage';
 import { AppLayout } from './AppLayout';
 import { GuestOnly } from './GuestOnly';
@@ -45,6 +46,8 @@ export const router = createBrowserRouter([
                   // After generation: the AI's questions, then the editor.
                   { path: 'cvs/:cvId/questions', element: <ClarifyPage /> },
                   { path: 'cvs/:cvId/editor', element: <CvEditorPage /> },
+                  // The CV at full size, and its PDF.
+                  { path: 'cvs/:cvId/preview', element: <CvPreviewPage /> },
                   { path: '*', element: <NotFoundPage /> },
                 ],
               },
