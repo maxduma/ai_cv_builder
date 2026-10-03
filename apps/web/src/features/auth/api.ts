@@ -8,6 +8,7 @@ import {
   flushEditorSessions,
   hasUnsavedEdits,
 } from '../editor/editor-session';
+import { clearSavedForm } from '../cvs/create/saved-form';
 
 const UNSAVED_ON_LOGOUT =
   'Some changes to your CV couldn’t be saved. If you log out now, they will be lost. Log out anyway?';
@@ -105,6 +106,7 @@ export function useLogout() {
       await navigate('/login', { replace: true, flushSync: true });
       removeUserData(queryClient);
       clearEditorSessions();
+      clearSavedForm();
     },
   });
 }

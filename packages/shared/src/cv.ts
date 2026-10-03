@@ -6,9 +6,12 @@ import type { SourceDocumentDto } from './source-document';
 
 export const TARGET_ROLE_MIN_LENGTH = 2;
 export const TARGET_ROLE_MAX_LENGTH = 120;
-/** Experience in the user's own words: enough to describe a role, and no more than the UI takes. */
+/**
+ * Experience in the user's own words: enough to describe a role, and room for a whole CV pasted in
+ * as text (about 3,000 words). A longer CV goes in as a PDF, which may carry more.
+ */
 export const SOURCE_TEXT_MIN_LENGTH = 30;
-export const SOURCE_TEXT_MAX_LENGTH = 5_000;
+export const SOURCE_TEXT_MAX_LENGTH = 20_000;
 
 /**
  * Trimmed text that can be cleared: `''` and `null` both mean "no value". Wrapped in `.optional()`

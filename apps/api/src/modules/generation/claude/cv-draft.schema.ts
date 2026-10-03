@@ -4,8 +4,9 @@ import { toJsonOutputFormat } from '../../../integrations/ai/output-schema';
 
 /**
  * How many entries each list in Claude's answer may have: the limits of a stored CV
- * (`CvContentSchema` in packages/shared/src/cv-content.ts) and of its issues. Lists come most
- * relevant first, so the generator cuts a list that runs over instead of rejecting the answer.
+ * (`CvContentSchema` in packages/shared/src/cv-content.ts) and of its issues. Experience, bullets,
+ * skills and links come most relevant first, and education most recent first, so the generator
+ * cuts the tail of a list that runs over instead of rejecting the answer.
  */
 export const AI_CV_DRAFT_LIMITS = {
   links: CV_LIMITS.links,
@@ -94,7 +95,7 @@ export const AiCvDraftSchema = z.strictObject({
       ),
     }),
     AI_CV_DRAFT_LIMITS.experience,
-    'Every role in the sources, most recent first. Unrelated roles are condensed, not dropped.',
+    'Every role in the sources, ordered by relevance to the target role (most relevant first, most recent first among equally relevant ones). Unrelated roles are condensed, not dropped.',
   ),
   education: list(
     z.strictObject({
@@ -126,7 +127,7 @@ export const AiCvDraftSchema = z.strictObject({
         'The exact place, e.g. "Experience · Northpay" or "Contact details". In English.',
       ),
       question: issue.question.describe(
-        'A short question the person can answer to fill the gap. In English.',
+        'A short, neutral question the person can answer to fill the gap: it never presupposes a fact the sources do not state. In English.',
       ),
       why: issue.why.describe(
         'One sentence on why answering helps for the target role. In English.',

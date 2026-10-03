@@ -31,6 +31,22 @@ describe('SYSTEM_PROMPT', () => {
     expect(SYSTEM_PROMPT).not.toContain(source);
     expect(SYSTEM_PROMPT).not.toContain(role);
   });
+
+  it('keeps the person’s own verbs: nothing is made stronger than the source says', () => {
+    expect(SYSTEM_PROMPT).toContain("Don't strengthen what the source says");
+  });
+
+  it('asks its questions neutrally, without presupposing facts the sources lack', () => {
+    expect(SYSTEM_PROMPT).toContain(
+      "A question never presupposes a title, responsibility, tool or result the source doesn't state",
+    );
+  });
+
+  it('orders the roles by relevance to the target role, newest first among equals', () => {
+    expect(SYSTEM_PROMPT).toContain(
+      'ordered by relevance to the target role: the most relevant role first, and the most recent first among roles that are equally relevant',
+    );
+  });
 });
 
 describe('buildUserContent', () => {

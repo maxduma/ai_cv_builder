@@ -87,8 +87,18 @@ const testUserFromHeader: CurrentUserResolver = async (req) => {
 
 const servers: Server[] = [];
 
-afterEach(() => {
-  for (const server of servers.splice(0)) server.close();
+// Wait until every server is closed, keep-alive connections included: a socket left open by one
+// test must not be reused by the next test's server if the system hands out the same port again.
+afterEach(async () => {
+  await Promise.all(
+    servers.splice(0).map(
+      (server) =>
+        new Promise<void>((resolve) => {
+          server.close(() => resolve());
+          server.closeAllConnections();
+        }),
+    ),
+  );
 });
 
 interface StartAppOptions extends Partial<AppDeps> {

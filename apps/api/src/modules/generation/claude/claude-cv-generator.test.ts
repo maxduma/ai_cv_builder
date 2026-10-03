@@ -590,6 +590,55 @@ describe('Claude CV generator', () => {
     });
   });
 
+  describe('headline', () => {
+    const asTargetRole = draft({ contact: { ...CONTACT, headline: 'Senior Backend Engineer' } });
+
+    it('clears one that is only the target role and asks for the person’s own title', async () => {
+      const { result } = run([answer(asTargetRole)]);
+
+      const cv = await result;
+
+      expect(CvContentSchema.parse(cv.content).contact.headline).toBe('');
+      expect(cv.issues).toEqual([
+        ISSUE,
+        {
+          section: 'contact',
+          kind: 'missing',
+          target: 'Contact details',
+          question: 'What is your current or most recent job title?',
+          why: expect.stringContaining('only keeps a title found in your CV or notes'),
+        },
+      ]);
+      expect(GenerationIssuesSchema.safeParse(cv.issues).success).toBe(true);
+    });
+
+    it('keeps it when the sources give that title', async () => {
+      const { result } = run([answer(asTargetRole)], {
+        input: { ...INPUT, sourceText: 'Promoted to Senior Backend Engineer last year.' },
+      });
+
+      const cv = await result;
+
+      expect(CvContentSchema.parse(cv.content).contact.headline).toBe('Senior Backend Engineer');
+      expect(cv.issues).toEqual([ISSUE]);
+    });
+
+    it('makes room for its question', async () => {
+      const issues = many(10, (index) => ({ ...ISSUE, question: `Question ${index + 1}?` }));
+      const { result } = run([
+        answer({ ...asTargetRole, issues: issues.map((issue) => ({ ...issue, item: 0 })) }),
+      ]);
+
+      const cv = await result;
+
+      expect(cv.issues).toEqual([
+        ...issues.slice(0, 9),
+        expect.objectContaining({ question: 'What is your current or most recent job title?' }),
+      ]);
+      expect(GenerationIssuesSchema.safeParse(cv.issues).success).toBe(true);
+    });
+  });
+
   it('turns an issue’s entry position into that entry’s id, when there is one', async () => {
     const { result } = run([
       answer(

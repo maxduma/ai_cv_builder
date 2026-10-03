@@ -153,6 +153,66 @@ describe('React-PDF CV renderer', () => {
     });
   });
 
+  it('keeps the text of every PDF intact after CVs with accented letters were rendered', async () => {
+    // One renderer, and so one set of font caches, serves every request. Rendering an accented
+    // letter must not leave its base letter without a text mapping for the PDFs that follow.
+    const cv = (name: string, summary: string): CvContent => ({
+      ...CV,
+      contact: { ...CV.contact, firstName: name, lastName: '' },
+      summary,
+    });
+    const accented = 'Zürich, Ťešín, Đorđe, Şahin, Ștefan, Žilina, Łódź, Ångström.';
+    const plain = 'Linux, Ubuntu, Utrecht, urban, unusual, Slovenia, Sofia, Zagreb.';
+    const textOf = async (content: CvContent) =>
+      (await pageTexts((await renderer.render(content)).data))[0] ?? '';
+
+    expect(await textOf(cv('Zürich', accented))).toContain(accented);
+    expect(await textOf(cv('Linux', plain))).toContain(plain);
+    expect(await textOf(cv('Ångström', accented))).toContain(accented);
+    expect(await textOf(cv('Олена', 'Їжак, Ґанок, Єдність, Щука.'))).toContain(
+      'Їжак, Ґанок, Єдність, Щука.',
+    );
+  });
+
+  it('wraps lines between words, also after ligatures like "fi" and "ffi"', async () => {
+    // Fonts build "fi", "fl", "ffi" out of several characters. If the layout miscounts the
+    // characters of a ligature, lines start to break in the middle of words.
+    const words = [
+      'official',
+      'office',
+      'difficult',
+      'affluent',
+      'flight',
+      'first',
+      'final',
+      'fluent',
+      'offline',
+      'different',
+      'shuffle',
+      'confident',
+      'efficient',
+      'profile',
+      'workflow',
+      'Kafka',
+      'with',
+      'and',
+      'the',
+    ];
+    const summary = Array.from({ length: 120 }, (_, i) => words[(i * 7 + 3) % words.length]).join(
+      ' ',
+    );
+    const pdf = await renderer.render({ ...CV, summary });
+    const { items } = await extractTextItems(copy(pdf.data));
+    const lines = (items[0] ?? []).map((item) => item.str.trim()).filter(Boolean);
+    const body = lines.slice(lines.indexOf('SUMMARY') + 1, lines.indexOf('EXPERIENCE'));
+
+    expect(body.length).toBeGreaterThan(3);
+    expect(body.join(' ')).toBe(summary);
+    for (const token of body.flatMap((line) => line.split(' '))) {
+      expect(words, `"${token}" is a whole word`).toContain(token);
+    }
+  });
+
   it('keeps Cyrillic text', async () => {
     const pdf = await renderer.render({
       ...CV,

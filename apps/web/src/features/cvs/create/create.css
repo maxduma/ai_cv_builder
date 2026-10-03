@@ -821,7 +821,8 @@
     bottom: 0;
     z-index: 30;
     display: block;
-    padding: 12px 32px calc(12px + env(safe-area-inset-bottom, 0px));
+    padding: 12px max(32px, var(--safe-right)) calc(12px + env(safe-area-inset-bottom, 0px))
+      max(32px, var(--safe-left));
     background: rgba(255, 255, 255, 0.88);
     -webkit-backdrop-filter: saturate(180%) blur(16px);
     backdrop-filter: saturate(180%) blur(16px);

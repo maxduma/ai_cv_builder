@@ -50,12 +50,31 @@ export interface CvViewEducation {
 // eslint-disable-next-line no-control-regex -- stripping control characters is the point
 const CONTROL = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/g;
 
+/** Spaces of other widths (en, thin, narrow no-break, ideographic...): one ordinary space. */
+const WIDE_SPACES = /[\u2000-\u200a\u202f\u205f\u3000]/g;
+/** Zero-width space and the marks that set text direction or join words invisibly. */
+const INVISIBLE = /[\u200b\u200e\u200f\u202a-\u202e\u2060-\u2069\ufeff]/g;
+
+/**
+ * Text as the font can print it, whatever the source: letters with their accents composed (a PDF
+ * may give "e" and a combining accent, which would be drawn apart), spaces of other widths as an
+ * ordinary space, invisible direction marks removed, and the hyphens the font lacks (U+2010,
+ * U+2011) as a plain one.
+ */
+function printable(text: string): string {
+  return text
+    .normalize('NFC')
+    .replace(WIDE_SPACES, ' ')
+    .replace(INVISIBLE, '')
+    .replace(/[\u2010\u2011]/g, '-');
+}
+
 /**
  * Text as the page shows a one-line value: runs of white space, line breaks included, read as
  * one space (as HTML does), with control characters removed.
  */
 function line(text: string): string {
-  return text
+  return printable(text)
     .replace(/[\t\n\f\r ]+/g, ' ')
     .replace(CONTROL, '')
     .trim();
@@ -66,7 +85,7 @@ function line(text: string): string {
  * space collapses to one space, and spaces around a line break are dropped.
  */
 function paragraph(text: string): string {
-  return text
+  return printable(text)
     .replace(/\r\n?/g, '\n')
     .replace(/[\t\f ]+/g, ' ')
     .replace(CONTROL, '')

@@ -99,6 +99,10 @@ describe('ANSWER_SYSTEM_PROMPT', () => {
     }
   });
 
+  it('keeps the person’s own verbs: an answer is never made stronger than it was', () => {
+    expect(ANSWER_SYSTEM_PROMPT).toContain("Don't strengthen what the person said");
+  });
+
   it('describes every part the user message can have', () => {
     for (const tag of ['target_role', 'cv', 'question', 'follow_up', 'previous_answer', 'answer']) {
       expect(ANSWER_SYSTEM_PROMPT).toContain(`<${tag}>`);

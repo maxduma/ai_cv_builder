@@ -11,6 +11,7 @@
   margin: 0;
   padding: 56px 64px 52px;
   overflow: hidden;
+  overflow-wrap: anywhere;
   background: #ffffff;
   color: #1c1c22;
   font-family:

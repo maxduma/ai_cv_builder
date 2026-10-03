@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Lint, types, tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # The PostgreSQL suite (apps/api/src/db/repositories.postgres.test.ts) needs a real database;
+    # the rest of the tests run without one.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: cvbuilder
+          POSTGRES_PASSWORD: cvbuilder
+          POSTGRES_DB: cvbuilder
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cvbuilder"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # pnpm comes from corepack, pinned by "packageManager" in package.json, as in the Docker image.
+      - run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Also generates the Prisma client, which the other checks import.
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm format:check
+      - run: pnpm test
+
+      - name: Data layer on PostgreSQL
+        run: pnpm --filter @cv-builder/api test:db
+        env:
+          TEST_DATABASE_URL: postgresql://cvbuilder:cvbuilder@localhost:5432/cvbuilder_test

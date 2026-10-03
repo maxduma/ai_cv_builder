@@ -7,6 +7,7 @@ import {
   type CvDetail,
   type CvListResponse,
   type GenerationIssue,
+  SOURCE_TEXT_MAX_LENGTH,
 } from '@cv-builder/shared';
 import { describe, expect, it } from 'vitest';
 import { largestCv } from '../../test/largest-cv';
@@ -127,7 +128,7 @@ describe('POST /api/cvs', () => {
 
   it.each([
     ['a target role', { targetRole: 'x'.repeat(121) }, 'targetRole'],
-    ['notes', { sourceText: 'x'.repeat(5_001) }, 'sourceText'],
+    ['notes', { sourceText: 'x'.repeat(SOURCE_TEXT_MAX_LENGTH + 1) }, 'sourceText'],
   ])('rejects %s over the limit, creating nothing', async (_, body, path) => {
     const { baseUrl, db } = await startApp();
 
@@ -304,7 +305,7 @@ describe('PATCH /api/cvs/:cvId', () => {
     const cv = await createCv(baseUrl);
 
     const response = await sendJson(`${baseUrl}/api/cvs/${cv.id}`, 'PATCH', {
-      sourceText: 'x'.repeat(5_001),
+      sourceText: 'x'.repeat(SOURCE_TEXT_MAX_LENGTH + 1),
     });
 
     expect(response.status).toBe(400);

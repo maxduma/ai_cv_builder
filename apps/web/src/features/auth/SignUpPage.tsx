@@ -23,7 +23,7 @@ export function SignUpPage() {
       <AuthForm
         form={form}
         title="Create your account"
-        subtitle="Create, edit and manage your CVs in one place."
+        subtitle="Create and edit your CVs in one place."
         submitLabel="Create account"
         busyLabel="Creating account…"
         footer={

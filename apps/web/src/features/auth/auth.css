@@ -3,6 +3,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   min-height: 100vh;
+  min-height: 100dvh;
   /* The auth pages' own backdrop: the glow sits behind the form rather than in the middle. */
   background-color: var(--canvas);
   background-image: radial-gradient(

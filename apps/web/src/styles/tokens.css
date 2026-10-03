@@ -1,5 +1,9 @@
 /* Design tokens from the CV Builder design system (DesignSystem artboard). */
 :root {
+  /* The notch's room on phones held sideways (needs viewport-fit=cover); 0 elsewhere. */
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+
   --accent: #4655eb;
 
   --ink: #121216;

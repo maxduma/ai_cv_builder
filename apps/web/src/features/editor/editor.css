@@ -19,7 +19,7 @@
   max-width: 1376px;
   height: 56px;
   margin: 0 auto;
-  padding: 0 32px;
+  padding: 0 max(32px, var(--safe-right)) 0 max(32px, var(--safe-left));
 }
 
 .ed-bar .back-link {
@@ -135,7 +135,7 @@
 .ed-main {
   max-width: 1376px;
   margin: 0 auto;
-  padding: 24px 32px 96px;
+  padding: 24px max(32px, var(--safe-right)) 96px max(32px, var(--safe-left));
 }
 
 .ed-grid {
@@ -447,7 +447,8 @@
     bottom: 0;
     z-index: 30;
     display: block;
-    padding: 12px 32px calc(12px + env(safe-area-inset-bottom, 0px));
+    padding: 12px max(32px, var(--safe-right)) calc(12px + env(safe-area-inset-bottom, 0px))
+      max(32px, var(--safe-left));
     background: rgba(255, 255, 255, 0.9);
     -webkit-backdrop-filter: saturate(180%) blur(16px);
     backdrop-filter: saturate(180%) blur(16px);
@@ -571,5 +572,14 @@
 @media (max-width: 599px), (hover: none) {
   .ask-body .input {
     font-size: 16px;
+  }
+}
+
+/* A phone held sideways has little height: the bars scroll away instead of staying pinned (the
+   bottom bar stays, it holds the actions). */
+@media (max-height: 500px) {
+  .ed-bar,
+  .sec-nav {
+    position: static;
   }
 }

@@ -48,7 +48,7 @@ export function CvListPage() {
               </span>
             )}
           </div>
-          <p className="page-sub">Create, edit and manage your CVs in one place.</p>
+          <p className="page-sub">Create and edit your CVs in one place.</p>
         </div>
         {/* Empty and error states carry their own single action. */}
         {(isLoading || hasCvs) && (

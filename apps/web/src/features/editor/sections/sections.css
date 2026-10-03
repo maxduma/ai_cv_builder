@@ -637,6 +637,14 @@
     0 0 0 4px color-mix(in oklab, var(--accent) 16%, transparent);
 }
 
+/* Without `field-sizing`, an achievement the AI wrote (100–200 characters) would scroll inside a
+   two-line box: leave room for three lines. */
+@supports not (field-sizing: content) {
+  .bl-input {
+    min-height: 92px;
+  }
+}
+
 .bl .icon-btn {
   margin-top: 4px;
   opacity: 0.7;
@@ -758,8 +766,13 @@
     grid-column: auto;
   }
 
+  /* The link type takes a row of its own, so the address has room. */
   .link-row {
-    grid-template-columns: 112px minmax(0, 1fr) 40px;
+    grid-template-columns: minmax(0, 1fr) 44px;
+  }
+
+  .link-row .select {
+    grid-column: 1 / -1;
   }
 
   .it-body {
@@ -794,7 +807,7 @@
   }
 
   .bl {
-    grid-template-columns: minmax(0, 1fr) 40px;
+    grid-template-columns: minmax(0, 1fr) 44px;
   }
 
   .skill-chip {

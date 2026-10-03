@@ -17,7 +17,7 @@
   max-width: 1184px;
   height: 60px;
   margin: 0 auto;
-  padding: 0 32px;
+  padding: 0 max(32px, var(--safe-right)) 0 max(32px, var(--safe-left));
 }
 
 .brand {
@@ -318,7 +318,7 @@
 .page-main {
   max-width: 1184px;
   margin: 0 auto;
-  padding: 56px 32px 96px;
+  padding: 56px max(32px, var(--safe-right)) 96px max(32px, var(--safe-left));
 }
 
 .page-main.is-form,
@@ -418,6 +418,12 @@
     padding: 0 8px 0 6px;
   }
 
+  /* Touch targets. */
+  .nav-link,
+  .back-link {
+    height: 44px;
+  }
+
   .menu-item {
     min-height: 44px;
     font-size: 15px;
@@ -444,5 +450,12 @@
 
   .page-title {
     font-size: 28px;
+  }
+}
+
+/* A phone held sideways has little height: the header scrolls away instead of pinning 60px of it. */
+@media (max-height: 500px) {
+  .app-header {
+    position: static;
   }
 }

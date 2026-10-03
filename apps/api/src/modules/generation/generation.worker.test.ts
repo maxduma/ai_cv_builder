@@ -457,7 +457,8 @@ describe('mock generator', () => {
     );
 
     expect(steps).toEqual([0, 1, 2, 3]);
-    expect(CvContentSchema.parse(output.content).contact.headline).toBe('Data Engineer');
+    // Like the real generator, the mock never makes the target role the person's own title.
+    expect(CvContentSchema.parse(output.content).contact.headline).toBe('');
     expect(GenerationIssuesSchema.parse(output.issues).map((issue) => issue.section)).toEqual([
       'experience',
       'education',

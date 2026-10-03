@@ -11,7 +11,9 @@ import { type RefObject, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useNavigate } from 'react-router';
 import { ApiError } from '../../../lib/api-client';
+import { useCurrentUser } from '../../auth/api';
 import { cacheStartedJob, cvKeys, cvsApi } from '../api';
+import { clearSavedForm, hasUnsentInput, readSavedForm, writeSavedForm } from './saved-form';
 
 export type PdfState =
   | { phase: 'uploading'; name: string; size: number; progress: number }
@@ -68,15 +70,21 @@ interface InFlightUpload {
  * first time it is needed (a PDF is chosen, or Generate is pressed), so uploads can start at once;
  * from then on the page's address is the draft's, so a reload reopens it with its PDF. The role and
  * description typed so far go with the draft when it is created; later changes are saved when
- * Generate is pressed. `initial` is an existing draft being edited.
+ * Generate is pressed. Until then they are mirrored to the tab's `sessionStorage` (see
+ * `saved-form.ts`), so a reload brings them back, and closing the tab asks first. `initial` is an
+ * existing draft being edited.
  */
 export function useCvDraft(initial: CvDetail | null, refs: FormRefs) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
+  const userId = useCurrentUser()?.id ?? '';
+
   const [cvId, setCvId] = useState(initial?.id ?? null);
-  const [role, setRole] = useState(initial?.targetRole ?? '');
-  const [text, setText] = useState(initial?.sourceText ?? '');
+  // What a reload interrupted wins over what the server has: it is newer.
+  const [restored] = useState(() => (userId ? readSavedForm(userId, initial?.id ?? null) : null));
+  const [role, setRole] = useState(restored?.role ?? initial?.targetRole ?? '');
+  const [text, setText] = useState(restored?.text ?? initial?.sourceText ?? '');
   const [pdf, setPdf] = useState<PdfState | null>(
     initial?.sourceDocument ? { phase: 'ready', document: initial.sourceDocument } : null,
   );
@@ -94,6 +102,25 @@ export function useCvDraft(initial: CvDetail | null, refs: FormRefs) {
   useEffect(() => {
     latest.current = { role, text };
   });
+  // What the server has: the draft as loaded, then whatever the draft was created with.
+  const sent = useRef({ role: initial?.targetRole ?? '', text: initial?.sourceText ?? '' });
+
+  // Mirror the form to this tab's storage, so a reload brings it back; leaving the form by a link
+  // (or starting the generation) drops it, so a later "Create a new CV" opens empty.
+  useEffect(() => {
+    if (userId) writeSavedForm(userId, cvId, { role, text });
+  }, [userId, cvId, role, text]);
+  useEffect(() => clearSavedForm, []);
+
+  // Closing the tab discards what the server doesn't have yet, so ask first. A reload also asks,
+  // though the mirror above would bring the form back.
+  useEffect(() => {
+    const warn = (event: BeforeUnloadEvent) => {
+      if (hasUnsentInput(latest.current, sent.current)) event.preventDefault();
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, []);
 
   // Leaving the page cancels an upload in flight, and a generation that starts afterwards
   // doesn't pull the user back here.
@@ -134,12 +161,11 @@ export function useCvDraft(initial: CvDetail | null, refs: FormRefs) {
     if (initial) return Promise.resolve(initial.id);
     if (!draft.current) {
       const { role: currentRole, text: currentText } = latest.current;
+      const sentRole = currentRole.trim().length >= TARGET_ROLE_MIN_LENGTH ? currentRole : '';
       const creating = cvsApi
-        .create({
-          targetRole: currentRole.trim().length >= TARGET_ROLE_MIN_LENGTH ? currentRole : undefined,
-          sourceText: currentText || undefined,
-        })
+        .create({ targetRole: sentRole || undefined, sourceText: currentText || undefined })
         .then((cv) => {
+          sent.current = { role: sentRole, text: currentText };
           setCvId(cv.id);
           // The form now edits this draft: a reload or Back reopens it (with its PDF) instead of
           // starting another. Not navigate(), which would remount the form and cancel the upload.
@@ -289,8 +315,10 @@ export function useCvDraft(initial: CvDetail | null, refs: FormRefs) {
       const inputs = latest.current;
       // An emptied description is cleared, so it isn't used for the generation.
       const cv = await cvsApi.update(cvId, { targetRole: inputs.role, sourceText: inputs.text });
+      sent.current = { role: inputs.role, text: inputs.text };
       const job = await cvsApi.startGeneration(cvId);
       cacheStartedJob(queryClient, cv, job);
+      clearSavedForm();
       showStatus(cvId);
     } catch (error) {
       setSubmitState('idle');

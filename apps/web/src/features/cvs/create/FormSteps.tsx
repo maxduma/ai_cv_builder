@@ -12,7 +12,8 @@ import {
 } from '../../../ui/icons';
 import type { CvDraft, PdfState, StarterLine } from './useCvDraft';
 
-const TEXT_WARN_AT = 4_500;
+/** The counter turns to a warning once the text is within a tenth of the limit. */
+const TEXT_WARN_AT = Math.floor(SOURCE_TEXT_MAX_LENGTH * 0.9);
 
 function classes(...names: (string | false | null | undefined)[]) {
   return names.filter(Boolean).join(' ');
@@ -64,7 +65,8 @@ export function TargetRoleStep({
             Target role
           </h2>
           <p className="step-desc">
-            The job you’re applying for. We tailor wording, skills and section order to it.
+            The job you’re applying for. We tailor the wording, skills and the order of your
+            experience to it.
           </p>
         </div>
         <span className="step-tag">Required</span>

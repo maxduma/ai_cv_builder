@@ -20,6 +20,7 @@ What to return
 - Your answer's schema covers only the section the question is about. Change only what the answer is about: for a question about one entry, change only that entry (use its id).
 - An empty string means "keep this as it is". Fill in only what changes. Nothing can be deleted.
 - Use only facts the person's answers state. Never add employers, titles, dates, degrees, metrics, tools, contact details or links that the answers don't give, never take them from the target role, and never present numbers already in the CV as new claims.
+- Don't strengthen what the person said: keep their verbs and quantities ("designed" stays "designed", never "designed and led"; "helped with" never becomes "led").
 - Copy emails, phone numbers and web addresses exactly as the answer writes them; never build one from a name or a username.
 - Prefer folding a detail into the most related existing bullet (rewrite it with its id) over adding a new one. Bullets start with a verb, run about 25 words at most, and keep numbers exactly as written.
 - The headline is the person's own job title, never the target role.

@@ -15,6 +15,7 @@ import {
   type AiCvDraft,
   AiCvDraftSchema,
 } from './cv-draft.schema';
+import { guardHeadline } from './headline-guard';
 import { buildUserContent, SYSTEM_PROMPT } from './prompt';
 import { requestStructured, withOneRetry } from './structured-answer';
 
@@ -38,6 +39,15 @@ const CLEARED_CONTACT_QUESTIONS: Record<
     question: 'Which profile or portfolio links should your CV include? Paste the full addresses.',
     why: 'Links let recruiters see more of your work, and the draft only keeps links found in your CV or notes.',
   },
+};
+
+/** A headline that was only the target role is cleared and asked for instead. */
+const CLEARED_HEADLINE_QUESTION: GenerationIssue = {
+  section: 'contact',
+  kind: 'missing',
+  target: 'Contact details',
+  question: 'What is your current or most recent job title?',
+  why: 'The headline shows who you are today, and the draft only keeps a title found in your CV or notes.',
 };
 
 /**
@@ -95,8 +105,9 @@ const SKILL_SCHEMA = AiCvDraftSchema.shape.skills.element;
 const ISSUE_SCHEMA = AiCvDraftSchema.shape.issues.element;
 
 /**
- * The API enforces neither how many entries a list may have nor how long a string is. Lists come
- * most relevant first, so one that runs over its limit is cut instead of failing the whole answer.
+ * The API enforces neither how many entries a list may have nor how long a string is. Roles,
+ * bullets, skills and links come most relevant first (education most recent first), so one that
+ * runs over its limit loses its tail instead of failing the whole answer.
  * A skill that is too long, or a question that breaks its rules, is dropped too: neither is a fact
  * the CV depends on. Everything else (titles, companies, achievements) must fit, as cutting a fact
  * short would change it.
@@ -167,11 +178,16 @@ function toGeneratedCv(draft: AiCvDraft, input: GenerationInput, log: Logger): G
   if (cleared.length > 0) {
     log.warn({ fields: cleared }, 'Removed contact details that are not in the sources');
   }
+  // A headline that is only the target role is a title nobody gave the person.
+  contact.headline = guardHeadline(contact.headline, input.targetRole, sources);
+  const headlineCleared = contact.headline === '' && draft.contact.headline !== '';
+  if (headlineCleared) log.warn('Removed a headline that was only the target role');
 
   // The model's questions come most important first; its last ones make room for those about the
   // removed details, as only they explain why a field the draft had filled is empty.
+  const questionsAdded = cleared.length + (headlineCleared ? 1 : 0);
   const issues: GenerationIssue[] = draft.issues
-    .slice(0, Math.max(0, GENERATION_ISSUES_MAX - cleared.length))
+    .slice(0, Math.max(0, GENERATION_ISSUES_MAX - questionsAdded))
     .map(({ item, ...issue }) => {
       const itemId = entryId(draft, issue.section, item);
       return itemId ? { ...issue, itemId } : issue;
@@ -184,6 +200,7 @@ function toGeneratedCv(draft: AiCvDraft, input: GenerationInput, log: Logger): G
       ...CLEARED_CONTACT_QUESTIONS[field],
     });
   }
+  if (headlineCleared) issues.push(CLEARED_HEADLINE_QUESTION);
 
   log.info(
     {
