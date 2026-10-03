@@ -204,7 +204,7 @@ function ReadyView({
       </h1>
       {questions > 0 ? (
         <p className="gen-sub">
-          A one-page draft for <strong>{role}</strong> is saved in My CVs. Answer {quick} to make it
+          A first draft for <strong>{role}</strong> is saved in My CVs. Answer {quick} to make it
           more specific, or go straight to the editor.
         </p>
       ) : (

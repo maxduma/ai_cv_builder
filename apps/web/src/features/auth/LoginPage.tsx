@@ -21,7 +21,7 @@ export function LoginPage() {
       <AuthForm
         form={form}
         title="Welcome back"
-        subtitle="Log in to manage your CVs."
+        subtitle="Log in to open your CVs."
         submitLabel="Log in"
         busyLabel="Logging in…"
         footer={
