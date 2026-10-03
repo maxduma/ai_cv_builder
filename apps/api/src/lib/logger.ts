@@ -4,6 +4,8 @@ import type { Config } from '../config/env';
 
 export type { Logger };
 
+const LOG_LEVEL = 'info';
+
 /**
  * pino-http logs request and response headers, which carry session tokens. Paths are those of
  * its serialized `req` and `res` (lowercase header names, as Node stores them).
@@ -16,10 +18,10 @@ const REDACTED_PATHS = [
 
 /** `destination` replaces the default output (stdout); tests use it to read the log lines. */
 export function createLogger(
-  config: Pick<Config, 'nodeEnv' | 'logLevel'>,
+  config: Pick<Config, 'nodeEnv'>,
   destination?: DestinationStream,
 ): Logger {
-  const options: LoggerOptions = { level: config.logLevel, redact: REDACTED_PATHS };
+  const options: LoggerOptions = { level: LOG_LEVEL, redact: REDACTED_PATHS };
 
   if (destination) {
     return pino(options, destination);

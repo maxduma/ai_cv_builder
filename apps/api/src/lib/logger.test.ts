@@ -10,10 +10,7 @@ interface RequestLog {
 describe('createLogger', () => {
   it('keeps session tokens out of the request logs', async () => {
     const lines: string[] = [];
-    const logger = createLogger(
-      { nodeEnv: 'test', logLevel: 'info' },
-      { write: (line) => lines.push(line) },
-    );
+    const logger = createLogger({ nodeEnv: 'test' }, { write: (line) => lines.push(line) });
     const { baseUrl } = await startApp({ sessions: 'real', logger });
 
     const { cookie } = await signUp(baseUrl);

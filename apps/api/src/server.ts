@@ -3,7 +3,11 @@ import { createApp } from './app';
 import { type Config, InvalidEnvError, parseEnv } from './config/env';
 import { createPrismaClient, pingDatabase } from './db/prisma';
 import { createRepositories } from './db/repositories';
-import { type ClaudeClient, createClaudeClient } from './integrations/ai/claude-client';
+import {
+  CLAUDE_MODEL,
+  type ClaudeClient,
+  createClaudeClient,
+} from './integrations/ai/claude-client';
 import { createUnpdfTextExtractor } from './integrations/extraction/unpdf-pdf-text-extractor';
 import { createReactPdfCvRenderer } from './integrations/pdf/react-pdf-cv-renderer';
 import { createLocalFileStorage } from './integrations/storage/local-file-storage';
@@ -30,18 +34,14 @@ function createAi(
   config: Config,
   logger: Logger,
 ): { generator: CvGenerator; answerUpdater: AnswerUpdater } {
-  const { apiKey, model } = config.anthropic;
+  const { apiKey } = config.anthropic;
   if (!apiKey) {
     logger.warn('ANTHROPIC_API_KEY is not set: CVs and answers use the development mocks');
-    return {
-      generator: createMockCvGenerator(config.mockGeneration),
-      answerUpdater: createMockAnswerUpdater(config.mockGeneration),
-    };
+    return { generator: createMockCvGenerator(), answerUpdater: createMockAnswerUpdater() };
   }
-  logger.info({ model }, 'CVs and answers use Claude');
+  logger.info({ model: CLAUDE_MODEL }, 'CVs and answers use Claude');
   const client: ClaudeClient = createClaudeClient({
     apiKey,
-    model,
     logger: logger.child({ module: 'claude' }),
   });
   return {
@@ -87,7 +87,6 @@ async function main(): Promise<void> {
     repository: repositories.generation,
     ...createAi(config, logger),
     logger: logger.child({ module: 'generation-worker' }),
-    jobTimeoutMs: config.generation.timeoutMs,
   });
 
   const server = app.listen(config.port, '0.0.0.0', (error) => {

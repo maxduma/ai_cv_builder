@@ -36,11 +36,11 @@ interface Options {
    */
   concurrency?: number;
   /**
-   * Deadline for one generation, the generator's own retries included. Past it the job fails with
-   * `AI_TIMEOUT`, even if the generator ignores its abort signal.
+   * Deadline for one generation, the generator's own retries included (4 minutes by default). Past
+   * it the job fails with `AI_TIMEOUT`, even if the generator ignores its abort signal.
    */
   jobTimeoutMs?: number;
-  /** The same for applying one answer. */
+  /** The same for applying one answer (2 minutes by default). */
   answerTimeoutMs?: number;
   /** Wait between queue checks while there is nothing to do. */
   pollIntervalMs?: number;

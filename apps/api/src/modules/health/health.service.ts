@@ -1,5 +1,6 @@
 import type { HealthResponse } from '@cv-builder/shared';
 import type { Config } from '../../config/env';
+import { CLAUDE_MODEL } from '../../integrations/ai/claude-client';
 import type { Logger } from '../../lib/logger';
 
 export interface HealthServiceDeps {
@@ -31,7 +32,7 @@ export function createHealthService({ checkDatabase, anthropic, logger }: Health
         timestamp: new Date().toISOString(),
         checks: {
           database,
-          ai: { status: aiConfigured ? 'configured' : 'not_configured', model: anthropic.model },
+          ai: { status: aiConfigured ? 'configured' : 'not_configured', model: CLAUDE_MODEL },
         },
       };
     },

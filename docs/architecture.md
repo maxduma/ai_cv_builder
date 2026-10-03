@@ -54,7 +54,7 @@ stateDiagram-v2
 
 1. The API stores the job and immediately responds `202 Accepted`. Nothing depends on the browser request staying open: the person can close the tab, reload, or come back later.
 2. A worker inside the API process claims pending jobs from PostgreSQL and updates `heartbeat_at` while it runs. A claim is one short transaction under an advisory lock (so two answers to one CV never run at once) with `SELECT … FOR UPDATE SKIP LOCKED`; the job itself runs outside the lock. It runs up to three jobs at a time, so one user's minute-long generation doesn't hold up everyone else's. If the process dies, jobs with a stale heartbeat (30 s) are re-queued, or failed with `WORKER_LOST` after three attempts.
-3. Every job has a deadline, `GENERATION_TIMEOUT_MS` (4 minutes by default; 2 minutes to apply an answer), that covers the generator's own retries. The worker enforces it: the generator's abort signal fires, a generator that doesn't stop is abandoned anyway, and the job fails with `AI_TIMEOUT`.
+3. Every job has a deadline (4 minutes for a generation, 2 minutes to apply an answer; constants in `generation.worker.ts`) that covers the generator's own retries. The worker enforces it: the generator's abort signal fires, a generator that doesn't stop is abandoned anyway, and the job fails with `AI_TIMEOUT`.
 4. The client polls `GET /api/generation-jobs/:id`, or leaves and checks later. The database is the source of truth for job state. On shutdown (including `tsx watch` restarts) the worker hands its jobs back to the queue without counting the attempt; every write a worker makes is fenced by the job's attempt number, so a job taken over after going stale can't be overwritten by the old run. A brief database error while a job runs doesn't fail it. A restart aborts an in-flight Claude request, and the job runs again from the start (and is billed again).
 5. LLM output is never trusted. It is validated with strict Zod schemas before anything is saved, and the raw output is never stored or logged.
 
@@ -62,7 +62,7 @@ stateDiagram-v2
 
 `modules/generation/claude/` implements the generator on top of the Anthropic client in `integrations/ai/claude-client.ts`. Without an API key (development only), `mock-cv-generator.ts` stands in.
 
-- **Model:** `claude-opus-5-5` by default (`ANTHROPIC_MODEL`), streamed, with adaptive thinking and effort `medium`. The effort is a constant in `claude-client.ts`; raise it to `high` if the quality falls short (slower and more expensive).
+- **Model:** `claude-opus-5-5` (`CLAUDE_MODEL`), streamed, with adaptive thinking and effort `medium`. Both are constants in `claude-client.ts`; raise the effort to `high` if the quality falls short (slower and more expensive). The request uses what Opus 5.5 offers, so another model may reject it.
 - **Server-side refusal fallback:** if the model's safety classifiers decline a request (a CV in security or biology can trip them), the Anthropic API hands it over to a fallback model it picks instead of refusing.
 - **Prompt:** the system prompt holds only the instructions (see [Preventing invented facts](../README.md#preventing-invented-facts)). The user's PDF text and notes and the target role follow in separate delimited blocks, and the prompt treats their content as data, not instructions.
 - **Order:** the roles come ordered by relevance to the target role (the most recent first among equally relevant ones), and so do each role's achievements and the skills; education is most recent first. The person can reorder roles and education by hand.

@@ -9,29 +9,26 @@ Commands, configuration, the code layout and what the tests cover. Getting the a
 | Start / stop                            | `docker compose up` / `docker compose down`                                                                       |
 | Follow API logs                         | `docker compose logs -f api`                                                                                      |
 | Create a migration after editing schema | `docker compose exec api pnpm db:migrate --name <change>`                                                         |
-| Apply changes to `.env`                 | `docker compose up -d`                                                                                            |
+| Apply a changed API key                 | `docker compose up -d`                                                                                            |
 | After adding or removing dependencies   | `docker compose up --build -V`                                                                                    |
 | Reset the database                      | `docker compose down -v`                                                                                          |
 | Prisma Studio (from the host)           | `DATABASE_URL=postgresql://cvbuilder:cvbuilder@localhost:54320/cvbuilder pnpm --filter @cv-builder/api db:studio` |
 
 ## Configuration
 
-Docker Compose reads `.env` (copy `.env.example`).
+Docker Compose reads `.env` (copy `.env.example`), and the only value in it is `ANTHROPIC_API_KEY`. Without it the API runs on development mocks (demo mode).
 
-| Variable                    | Default           | Purpose                                                                              |
-| --------------------------- | ----------------- | ------------------------------------------------------------------------------------ |
-| `ANTHROPIC_API_KEY`         | none              | Claude API key. Required in production; development without it uses mocks            |
-| `ANTHROPIC_MODEL`           | `claude-opus-5-5` | Claude model for generations and answers. Requests use adaptive thinking and effort  |
-| `GENERATION_TIMEOUT_MS`     | `240000`          | Deadline for one CV generation, retries included; then it fails with `AI_TIMEOUT`    |
-| `JWT_SECRET`                | dev fallback      | Signs login sessions. Required in production: `openssl rand -base64 48`              |
-| `LOG_LEVEL`                 | `info`            | API log level (`fatal` … `trace`, `silent`)                                          |
-| `MOCK_GENERATION_STEP_MS`   | `2500`            | Duration of each of the mock generator's four steps, and of a mock answer            |
-| `MOCK_GENERATION_FAIL_RATE` | `0`               | Share of mock generations and answers that fail (0–1); `1` shows the failure screens |
-| `WEB_PORT`                  | `5173`            | Host port for the web app                                                            |
-| `API_PORT`                  | `4000`            | Host port for the API (localhost only)                                               |
-| `DB_PORT`                   | `54320`           | Host port for PostgreSQL (localhost only)                                            |
+Everything else is a constant next to the code it tunes, so there is nothing else to set:
 
-`NODE_ENV`, `PORT`, `DATABASE_URL` and `UPLOAD_DIR` (uploaded PDFs, in the `uploads` volume) are set in `docker-compose.yml`. The API validates its whole environment at startup and exits with a readable message if anything is invalid. Applying an answer has a fixed 2-minute deadline.
+| What                                                   | Where                                                                                                                                      |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Claude model and effort                                | `CLAUDE_MODEL` and `EFFORT` in `integrations/ai/claude-client.ts`                                                                          |
+| Job deadlines (4 minutes per generation, 2 per answer) | `jobTimeoutMs` and `answerTimeoutMs` in `modules/generation/generation.worker.ts`                                                          |
+| Pace and failure rate of the demo mocks                | `STEP_MS` and `FAIL_RATE` in `mock-cv-generator.ts` and `answers/mock-answer-updater.ts` (set `FAIL_RATE` to 1 to see the failure screens) |
+| Log level                                              | `LOG_LEVEL` in `lib/logger.ts`                                                                                                             |
+| Host ports (5173, 4000 and 54320) and database login   | `docker-compose.yml`; a busy port can be moved with `WEB_PORT=5174 docker compose up` (also `API_PORT`, `DB_PORT`)                         |
+
+`NODE_ENV`, `PORT`, `DATABASE_URL` and `UPLOAD_DIR` (uploaded PDFs, in the `uploads` volume) are set in `docker-compose.yml`. Sessions are signed with `JWT_SECRET` when the process has one; Compose gives it none, so the API uses a public development secret and logs a warning. Production (`NODE_ENV=production`) refuses to start without a private `JWT_SECRET` and an `ANTHROPIC_API_KEY`. The API validates its environment at startup and exits with a readable message if anything is invalid.
 
 ## Project structure
 
