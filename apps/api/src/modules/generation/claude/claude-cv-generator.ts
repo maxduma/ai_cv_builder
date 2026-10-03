@@ -95,8 +95,9 @@ const SKILL_SCHEMA = AiCvDraftSchema.shape.skills.element;
 const ISSUE_SCHEMA = AiCvDraftSchema.shape.issues.element;
 
 /**
- * The API enforces neither how many entries a list may have nor how long a string is. Lists come
- * most relevant first, so one that runs over its limit is cut instead of failing the whole answer.
+ * The API enforces neither how many entries a list may have nor how long a string is. Roles,
+ * bullets, skills and links come most relevant first (education most recent first), so one that
+ * runs over its limit loses its tail instead of failing the whole answer.
  * A skill that is too long, or a question that breaks its rules, is dropped too: neither is a fact
  * the CV depends on. Everything else (titles, companies, achievements) must fit, as cutting a fact
  * short would change it.

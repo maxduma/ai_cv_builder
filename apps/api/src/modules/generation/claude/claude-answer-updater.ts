@@ -18,7 +18,8 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 /**
  * The API doesn't enforce how many entries a list may have; like a generated CV, an answer's
- * lists come most relevant first, so one that runs over is cut instead of failing the answer.
+ * lists keep their best entries first, so one that runs over loses its tail instead of failing
+ * the answer.
  * (What is added is fitted to the CV's room later anyway.)
  */
 function cutLists(json: unknown): unknown {
