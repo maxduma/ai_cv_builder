@@ -41,6 +41,18 @@
   min-width: 0;
 }
 
+/* The open card's menu rises over the cards after it, and over the backdrop that closes it (44). */
+.cv-item.is-open {
+  position: relative;
+  z-index: 45;
+}
+
+/* A deleted card leaves before the others close the gap. */
+.cv-item.cv-leave {
+  animation: cvb-leave var(--dur-base) var(--ease-in) forwards;
+  pointer-events: none;
+}
+
 /* Cards rise in sequence when the list first appears (motion spec: 600ms, 80ms apart). */
 .cv-item.cv-enter {
   animation: cvb-rise 620ms var(--ease-out) both;
@@ -170,11 +182,21 @@
 }
 
 .cv-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin: 0;
   color: var(--muted);
   font-size: 13px;
   line-height: 1.45;
   white-space: nowrap;
+}
+
+.cv-meta .kbd {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  font-size: 10.5px;
 }
 
 .cv-open {
@@ -231,6 +253,238 @@
 
 .cv-card:is(:hover, :has(.cv-open:focus-visible)) .cv-arrow {
   transform: translateX(2px);
+}
+
+/* ---------- ⋯ button and its menu ---------- */
+/* Scoped to the card: the editor's entries have their own, smaller ⋯ (sections.css). */
+.cv-card .more-wrap {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 4;
+}
+
+.cv-card .more-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.88);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  box-shadow:
+    0 0 0 1px rgba(17, 17, 26, 0.08),
+    0 1px 2px rgba(17, 17, 26, 0.06);
+  color: var(--text-2);
+  transition:
+    background-color var(--dur-fast) ease,
+    box-shadow var(--dur-base) ease,
+    color var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-out);
+}
+
+.cv-card .more-btn:hover {
+  background: #fff;
+  color: var(--ink);
+  box-shadow:
+    0 0 0 1px rgba(17, 17, 26, 0.12),
+    0 6px 14px -6px rgba(17, 17, 26, 0.22);
+}
+
+.cv-card .more-btn:active {
+  transform: scale(0.94);
+}
+
+.cv-card .more-btn[aria-expanded='true'] {
+  background: #fff;
+  color: var(--ink);
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--accent) 50%, transparent),
+    0 0 0 4px color-mix(in oklab, var(--accent) 14%, transparent);
+}
+
+.cv-card .menu-card {
+  width: 212px;
+}
+
+/* Catches clicks outside an open card menu: over the header (40), under the open card (45). */
+.menu-backdrop.for-card {
+  z-index: 44;
+}
+
+/* ---------- rename ---------- */
+.rename-input {
+  position: relative;
+  z-index: 2;
+  width: calc(100% + 8px);
+  height: 30px;
+  margin: -4px 0 -4px -8px;
+  padding: 0 7px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  outline: none;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 15.5px;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 20%, transparent);
+  animation: cvb-ring-in 220ms var(--ease-out) both;
+}
+
+.rename-input[aria-invalid='true'] {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--danger) 18%, transparent);
+}
+
+/* The hints under the field, or why saving failed (it wraps instead of widening the card). */
+.rename-error {
+  color: var(--danger-ink);
+  white-space: normal;
+}
+
+/* The renamed title is lit for a moment, where it now is. */
+.cv-flash {
+  animation: cvb-flash 1200ms var(--ease-out);
+}
+
+/* ---------- delete dialog ---------- */
+.dlg {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  height: auto;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 24px 16px;
+  border: 0;
+  background: rgba(12, 12, 20, 0.38);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  color: inherit;
+  animation: cvb-fade var(--dur-base) ease both;
+}
+
+/* The dialog itself paints the dimming; the browser's own backdrop would double it. */
+.dlg::backdrop {
+  background: transparent;
+}
+
+/* The page behind the dialog doesn't scroll under it. */
+body:has(.dlg) {
+  overflow: hidden;
+}
+
+.dlg.is-leaving {
+  animation: cvb-fade-out 150ms ease forwards;
+}
+
+.dlg-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+  max-width: 440px;
+  padding: 24px;
+  background: var(--surface);
+  border-radius: var(--r-2xl);
+  box-shadow: var(--sh-xl);
+  animation: cvb-dlg-in 260ms var(--ease-menu) both;
+}
+
+.dlg.is-leaving .dlg-panel {
+  animation: cvb-dlg-out 150ms var(--ease-in) forwards;
+}
+
+.dlg-grabber {
+  display: none;
+}
+
+.dlg-head {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.dlg-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--danger-tint);
+  color: var(--danger-ink);
+  box-shadow: inset 0 0 0 1px rgba(217, 45, 32, 0.14);
+}
+
+.dlg-title {
+  margin: 0;
+  color: var(--ink);
+  font-size: 18px;
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.dlg-text {
+  margin: 6px 0 0;
+  color: var(--text-3);
+  font-size: 14.5px;
+  line-height: 1.55;
+}
+
+.dlg-subject {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--r-lg);
+  background: var(--canvas);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.dlg-thumb {
+  display: block;
+  flex-shrink: 0;
+  color: var(--accent);
+  filter: drop-shadow(0 1px 1px rgba(17, 17, 26, 0.06));
+}
+
+.dlg-subject-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.dlg-subject-title {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.35;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dlg-subject-meta {
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+
+.dlg-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 /* ---------- skeleton ---------- */
@@ -302,6 +556,71 @@
   }
 }
 
+@keyframes cvb-leave {
+  to {
+    opacity: 0;
+    transform: translateY(8px) scale(0.95);
+  }
+}
+
+@keyframes cvb-ring-in {
+  from {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--accent) 0%, transparent);
+  }
+  to {
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 20%, transparent);
+  }
+}
+
+@keyframes cvb-flash {
+  0%,
+  25% {
+    background-color: color-mix(in oklab, var(--accent) 16%, transparent);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+@keyframes cvb-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes cvb-dlg-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes cvb-dlg-out {
+  to {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+
+@keyframes cvb-sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes cvb-sheet-out {
+  to {
+    transform: translateY(100%);
+  }
+}
+
 /* ---------- responsive ---------- */
 @media (max-width: 1023px) {
   .cv-grid {
@@ -358,6 +677,62 @@
     height: 44px;
     padding: 0 12px 0 14px;
     font-size: 14px;
+  }
+
+  .cv-card .more-wrap {
+    top: 8px;
+    right: 8px;
+  }
+
+  .cv-card .more-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+  }
+
+  /* The dialog is a sheet from the bottom edge. */
+  .dlg {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .dlg-panel {
+    max-width: none;
+    gap: 18px;
+    padding: 10px 20px calc(24px + env(safe-area-inset-bottom, 0px));
+    border-radius: 22px 22px 0 0;
+    animation: cvb-sheet-in 360ms var(--ease-menu) both;
+  }
+
+  .dlg.is-leaving .dlg-panel {
+    animation: cvb-sheet-out var(--dur-base) var(--ease-in) forwards;
+  }
+
+  .dlg-grabber {
+    display: block;
+    align-self: center;
+    width: 36px;
+    height: 5px;
+    margin-bottom: 2px;
+    border-radius: 999px;
+    background: #d9d9df;
+  }
+
+  .dlg-actions {
+    flex-direction: column-reverse;
+  }
+
+  .dlg-actions .btn {
+    width: 100%;
+    height: 48px;
+    font-size: 15px;
+  }
+}
+
+/* 16px text stops iOS from zooming into the field: on phones, and on touch screens of any width. */
+@media (max-width: 599px), (hover: none) {
+  .rename-input {
+    font-size: 16px;
   }
 }
 

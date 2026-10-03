@@ -273,6 +273,21 @@
   color: var(--muted);
 }
 
+/* The key that does the same, at the end of the item; not on touch screens. */
+.menu-item .kbd {
+  margin-left: auto;
+}
+
+.menu-item:is(:hover, :focus-visible) .kbd {
+  background: #fff;
+}
+
+@media (max-width: 599px), (hover: none) {
+  .menu-item .kbd {
+    display: none;
+  }
+}
+
 /* Not in the design: a failed action explains itself under its item. */
 .menu-error {
   padding: 4px 6px 4px 10px;

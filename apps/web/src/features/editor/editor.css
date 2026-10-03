@@ -321,62 +321,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* ---------- undo toast ---------- */
-.toast-region {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 24px;
-  z-index: 60;
-  display: flex;
-  justify-content: center;
-  padding: 0 16px;
-  pointer-events: none;
-}
-
-.toast {
-  pointer-events: auto;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  max-width: 520px;
-  min-height: 44px;
-  padding: 6px 6px 6px 12px;
-  border-radius: 12px;
-  background: #17171c;
-  color: #e9e9ee;
-  box-shadow:
-    0 20px 44px -16px rgba(10, 10, 16, 0.55),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.07);
-  animation: cvb-toast-in var(--dur-slow) var(--ease-menu) both;
-}
-
-.toast-ico {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 20px;
-  height: 20px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.1);
-  color: #c9c9d3;
-}
-
-.toast-ico svg {
-  display: block;
-}
-
-.toast-text {
-  margin: 0;
-  min-width: 0;
-  overflow: hidden;
-  font-size: 14px;
-  line-height: 1.4;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
+/* ---------- undo toast (the toast itself is in styles/components.css) ---------- */
 .toast-btn {
   flex-shrink: 0;
   height: 32px;
@@ -399,17 +344,6 @@
 .toast-btn:focus-visible {
   outline: 2px solid #fff;
   outline-offset: 1px;
-}
-
-@keyframes cvb-toast-in {
-  from {
-    opacity: 0;
-    transform: translateY(16px) scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
 }
 
 /* ---------- small-screen status bar ---------- */

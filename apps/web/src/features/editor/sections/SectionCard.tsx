@@ -1,12 +1,9 @@
 import type { ComponentProps, ReactNode } from 'react';
+import { classes } from '../../../lib/classes';
 import { ChevronDownIcon, ErrorIcon, LockIcon } from '../../../ui/icons';
 import './sections.css';
 
 export type SectionKey = 'contact' | 'summary' | 'experience' | 'education' | 'skills';
-
-export function classes(...names: (string | false | null | undefined)[]) {
-  return names.filter(Boolean).join(' ');
-}
 
 /** "1 role", "3 roles", "0 roles". */
 export function plural(count: number, one: string, many: string): string {
