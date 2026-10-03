@@ -30,7 +30,6 @@ model Cv {
   userId         String   @map("user_id") @db.Uuid
   title          String
   targetRole     String?  @map("target_role")
-  jobDescription String?  @map("job_description")
   /// The user's experience in their own words: one of the generation sources, next to an uploaded PDF.
   sourceText     String?  @map("source_text")
   /// Current structured CV document. Always validated against the shared content schema before it is written.

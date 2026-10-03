@@ -231,8 +231,7 @@ erDiagram
 - **Questions** are the AI's questions about a CV, one row each, so each has its own status (`OPEN`, `SKIPPED`, `ANSWERED`, `DISMISSED`), latest answer and follow-up.
 - **Generation jobs** keep a validated snapshot of their `input`, plus their validated `result` and `issues`, which allows auditing and restoring. Replacing or removing a PDF never changes a job's snapshot.
 - **Source documents** store file metadata and the extracted text. The uploaded PDF is kept on local disk (`UPLOAD_DIR`, the `uploads` volume) under a key the API generates, and deleted when it is replaced or removed; generation only uses the extracted text.
-- IDs are UUIDv7 (time-ordered) and all timestamps are `timestamptz`. (`cvs.job_description` exists in the schema but is unused.)
-
+- IDs are UUIDv7 (time-ordered) and all timestamps are `timestamptz`.
 ### CV generation as a persistent job
 
 Generation runs without a queue service, inside the API process:
@@ -351,7 +350,7 @@ The assignment had a 10-hour budget, so some things were deliberately left out o
 - **Accounts:** no email verification or password reset; sessions can't be revoked (see above); no login rate limiting yet. Limiting by client IP needs `trust proxy` set for whatever proxy runs in front of the API, or every client shares one IP. Meanwhile each guess costs a full scrypt hash, which also holds one of Node's four threadpool threads for a few hundred milliseconds, so a flood of logins would slow other requests too.
 - **Infrastructure:** development-only Docker (the source is bind-mounted for hot reload; no production images, deployment or HTTPS); uploaded PDFs on a local volume; the job worker, PDF text extraction and PDF rendering all run in the API process. A crafted PDF (one compressed page with millions of text operators) can keep the API busy for seconds: the 15 s parse deadline stops pdf.js only when it yields. Moving extraction and rendering to `worker_threads` is the next step.
 - **Testing:** the web app has no unit or browser end-to-end tests; it was checked by hand (see [Testing](#testing)). The repositories are tested on PostgreSQL only in the opt-in suite.
-- **Data:** the extracted text of a removed PDF stays in the snapshots of the jobs that used it (kept for auditing); `cvs.job_description` is unused.
+- **Data:** the extracted text of a removed PDF stays in the snapshots of the jobs that used it (kept for auditing).
 
 Known limitations of the UI:
 
