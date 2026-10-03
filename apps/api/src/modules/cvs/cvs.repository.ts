@@ -126,7 +126,14 @@ export function createCvsRepository(prisma: PrismaClient) {
         // Content exists from version 1 on (the first generation writes it).
         if (cv.content_version === 0) return { kind: 'not_generated' } as const;
 
-        const stored = CvContentSchema.parse(cv.content);
+        // Stored content the schema refuses is a fault on our side (500), not a bad request (400).
+        const parsed = CvContentSchema.safeParse(cv.content);
+        if (!parsed.success) {
+          throw new Error('The stored CV content does not match the schema', {
+            cause: parsed.error,
+          });
+        }
+        const stored = parsed.data;
         if (cv.content_version !== baseVersion) {
           return { kind: 'conflict', content: stored, contentVersion: cv.content_version } as const;
         }

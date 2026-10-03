@@ -15,6 +15,7 @@ export const ERROR_CODES = [
   'PDF_UNREADABLE',
   'PDF_NO_TEXT',
   'PDF_TOO_MANY_PAGES',
+  'PDF_TOO_MUCH_TEXT',
   // CV generation
   'CV_NOT_READY',
   'GENERATION_IN_PROGRESS',

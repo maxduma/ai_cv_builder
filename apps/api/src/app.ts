@@ -58,6 +58,12 @@ export function createApp(deps: AppDeps): Express {
       },
     }),
   );
+  // API responses carry personal data: keep them out of the browser's HTTP cache (routes may set
+  // their own policy). Registered before the body parser, so its error responses get it too.
+  app.use('/api', (_req, res, next) => {
+    res.set('Cache-Control', 'no-store');
+    next();
+  });
   app.use(express.json({ limit: '1mb' }));
 
   app.use('/api', createApiRouter(deps));

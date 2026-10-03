@@ -80,7 +80,7 @@ export function createClaudeCvGenerator({ client }: { client: ClaudeClient }): C
           },
           {
             schema: AiCvDraftSchema,
-            prepare: cutLists,
+            prepare: (json) => cutLists(json, attemptLog),
             what: 'CV',
             onAnswer: () => reach(STEPS.checking),
           },
@@ -91,13 +91,31 @@ export function createClaudeCvGenerator({ client }: { client: ClaudeClient }): C
   };
 }
 
+const SKILL_SCHEMA = AiCvDraftSchema.shape.skills.element;
+const ISSUE_SCHEMA = AiCvDraftSchema.shape.issues.element;
+
 /**
- * The API doesn't enforce how many entries a list may have. Lists come most relevant first, so
- * one that runs over its limit is cut instead of failing the whole answer.
+ * The API enforces neither how many entries a list may have nor how long a string is. Lists come
+ * most relevant first, so one that runs over its limit is cut instead of failing the whole answer.
+ * A skill that is too long, or a question that breaks its rules, is dropped too: neither is a fact
+ * the CV depends on. Everything else (titles, companies, achievements) must fit, as cutting a fact
+ * short would change it.
  */
-function cutLists(json: unknown): unknown {
+function cutLists(json: unknown, log: Logger): unknown {
   if (!isRecord(json)) return json;
   const { contact, experience } = json;
+  // Non-strings are kept, so that they fail the schema as the mismatch they are.
+  const skills = dropInvalid(json.skills, (skill) =>
+    typeof skill !== 'string' ? true : SKILL_SCHEMA.safeParse(skill).success,
+  );
+  const issues = dropInvalid(json.issues, (issue) => ISSUE_SCHEMA.safeParse(issue).success);
+  if (skills.dropped > 0 || issues.dropped > 0) {
+    // Counts only: the values are model output.
+    log.warn(
+      { skills: skills.dropped, issues: issues.dropped },
+      'Dropped skills or questions that broke their limits',
+    );
+  }
   return {
     ...json,
     contact: isRecord(contact)
@@ -113,9 +131,16 @@ function cutLists(json: unknown): unknown {
           )
       : experience,
     education: cut(json.education, AI_CV_DRAFT_LIMITS.education),
-    skills: cut(json.skills, AI_CV_DRAFT_LIMITS.skills),
-    issues: cut(json.issues, AI_CV_DRAFT_LIMITS.issues),
+    skills: cut(skills.value, AI_CV_DRAFT_LIMITS.skills),
+    issues: cut(issues.value, AI_CV_DRAFT_LIMITS.issues),
   };
+}
+
+/** `value` without the items `keep` refuses, if it is a list; how many were dropped. */
+function dropInvalid(value: unknown, keep: (item: unknown) => boolean) {
+  if (!Array.isArray(value)) return { value, dropped: 0 };
+  const kept = value.filter(keep);
+  return { value: kept, dropped: value.length - kept.length };
 }
 
 const cut = (value: unknown, maxItems: number) =>
@@ -143,12 +168,15 @@ function toGeneratedCv(draft: AiCvDraft, input: GenerationInput, log: Logger): G
     log.warn({ fields: cleared }, 'Removed contact details that are not in the sources');
   }
 
-  const issues: GenerationIssue[] = draft.issues.map(({ item, ...issue }) => {
-    const itemId = entryId(draft, issue.section, item);
-    return itemId ? { ...issue, itemId } : issue;
-  });
+  // The model's questions come most important first; its last ones make room for those about the
+  // removed details, as only they explain why a field the draft had filled is empty.
+  const issues: GenerationIssue[] = draft.issues
+    .slice(0, Math.max(0, GENERATION_ISSUES_MAX - cleared.length))
+    .map(({ item, ...issue }) => {
+      const itemId = entryId(draft, issue.section, item);
+      return itemId ? { ...issue, itemId } : issue;
+    });
   for (const field of cleared) {
-    if (issues.length >= GENERATION_ISSUES_MAX) break;
     issues.push({
       section: 'contact',
       kind: 'missing',
@@ -191,6 +219,9 @@ function toCvContent(draft: AiCvDraft): CvContent {
       return {
         id,
         ...role,
+        // A role with an end date has ended, whatever `current` says: the date is the stated fact
+        // (and a current role has no end date anywhere else in the app).
+        current: role.current && role.end.trim() === '',
         bullets: bullets.map((text, bullet) => ({ id: `${id}-bullet-${bullet + 1}`, text })),
       };
     }),

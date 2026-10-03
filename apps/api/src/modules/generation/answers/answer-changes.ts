@@ -10,7 +10,7 @@ import {
   isValidEmail,
   mergeCvContent,
 } from '@cv-builder/shared';
-import { guardContactDetails, normaliseUrl } from '../claude/contact-guard';
+import { digitsOf, guardContactDetails, normaliseUrl } from '../claude/contact-guard';
 import type { AnswerRequest } from './answer-input';
 import type {
   AnswerUpdate,
@@ -67,18 +67,21 @@ export function applyAnswerChanges(
   const itemId = request.question.itemId;
 
   if ('contact' in update) {
-    const problem = contactProblem(request, update.contact);
+    const changes = withoutEchoes(update.contact, request.cv.contact);
+    const problem = contactProblem(request, changes);
     if (problem) return { kind: 'follow_up', followUp: CONTACT_FOLLOW_UPS[problem] };
-    applyContact(cv, update.contact, newId);
+    applyContact(cv, changes, newId);
   }
   if ('summary' in update && clean(update.summary) !== '') {
     cv.summary = clean(update.summary);
   }
   if ('experience' in update) {
-    for (const changes of update.experience) applyRole(cv, changes, itemId, newId);
+    for (const changes of scoped(update.experience, itemId)) applyRole(cv, changes, itemId, newId);
   }
   if ('education' in update) {
-    for (const changes of update.education) applyEducation(cv, changes, itemId, newId);
+    for (const changes of scoped(update.education, itemId)) {
+      applyEducation(cv, changes, itemId, newId);
+    }
   }
   if ('addSkills' in update) {
     for (const name of update.addSkills.map(clean)) {
@@ -108,6 +111,19 @@ export function resolveAnswer(
     return { kind: 'invalid' };
   }
   return { kind: 'content', content: parsed.data, applied: changedPaths(current, parsed.data) };
+}
+
+/**
+ * The email and phone the CV already has, as Claude may repeat them in another form (case,
+ * spacing), count as unchanged: they are neither checked against the answer nor rewritten.
+ */
+function withoutEchoes(changes: ContactChanges, contact: CvContent['contact']): ContactChanges {
+  const phoneDigits = digitsOf(changes.phone);
+  return {
+    ...changes,
+    email: sameText(changes.email, contact.email) ? '' : changes.email,
+    phone: phoneDigits !== '' && phoneDigits === digitsOf(contact.phone) ? '' : changes.phone,
+  };
 }
 
 /** The contact detail of `changes` that the person's answers don't back up, if any. */
@@ -161,6 +177,19 @@ function applyContact(cv: CvContent, changes: ContactChanges, newId: () => strin
   for (const link of newLinks(cv.contact.links, changes.addLinks)) {
     cv.contact.links.push({ id: newId(), label: link.label || 'Website', url: link.url });
   }
+}
+
+/**
+ * The role or school changes that may apply. For a question about one entry: those that name it,
+ * or else a single change without an id (taken to mean that entry); several changes without an id
+ * describe other entries the answer mentioned, which such a question can't add, so none applies.
+ */
+function scoped<T extends { id: string }>(changes: T[], itemId: string | null): T[] {
+  if (itemId === null) return changes;
+  const named = changes.filter((entry) => clean(entry.id) === itemId);
+  if (named.length > 0) return named;
+  const unnamed = changes.filter((entry) => clean(entry.id) === '');
+  return unnamed.length === 1 ? unnamed : [];
 }
 
 /**

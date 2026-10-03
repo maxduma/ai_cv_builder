@@ -104,7 +104,9 @@ interface StartAppOptions extends Partial<AppDeps> {
  * base URL plus the fakes, so tests can arrange data and inspect what happened.
  */
 export async function startApp({ sessions = 'header', ...overrides }: StartAppOptions = {}) {
-  const { repositories, db } = createInMemoryRepositories();
+  const memory = createInMemoryRepositories();
+  // Sessions resolve against the same repositories the app uses (e.g. Postgres in its own tests).
+  const repositories = overrides.repositories ?? memory.repositories;
   const { storage, files } = createMemoryStorage();
   const { extractor, calls: extractorCalls } = createFakeExtractor();
   const { renderer: pdfRenderer, calls: pdfRenderCalls } = createFakePdfRenderer();
@@ -142,7 +144,8 @@ export async function startApp({ sessions = 'header', ...overrides }: StartAppOp
   return {
     baseUrl: `http://127.0.0.1:${port}`,
     repositories,
-    db,
+    /** The in-memory rows; empty when the test passed its own `repositories`. */
+    db: memory.db,
     files,
     extractorCalls,
     pdfRenderCalls,
@@ -191,8 +194,8 @@ export async function signUp(baseUrl: string, account: Partial<SignUpRequest> = 
 }
 
 /** Starts the app with real sessions and two signed-up accounts, for ownership tests. */
-export async function startAppWithTwoAccounts() {
-  const app = await startApp({ sessions: 'real' });
+export async function startAppWithTwoAccounts(options: Omit<StartAppOptions, 'sessions'> = {}) {
+  const app = await startApp({ ...options, sessions: 'real' });
   const owner = await signUp(app.baseUrl, { name: 'Alex Morgan', email: 'alex@example.com' });
   const other = await signUp(app.baseUrl, { name: 'Sam Lee', email: 'sam@example.com' });
   return { ...app, owner, other };

@@ -1,5 +1,10 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-import { CvContentSchema, type GenerationIssue, GenerationIssuesSchema } from '@cv-builder/shared';
+import {
+  CvContentSchema,
+  type GenerationIssue,
+  GenerationIssuesSchema,
+  isStorableText,
+} from '@cv-builder/shared';
 import type { Logger } from '../../lib/logger';
 import { applyAnswerChanges, resolveAnswer } from './answers/answer-changes';
 import { AnswerInputSchema, type AnswerUpdater } from './answers/answer-input';
@@ -63,12 +68,26 @@ function abortable<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
   });
 }
 
-/** The issues only advise the user, so an invalid list is dropped rather than failing the CV. */
+/**
+ * The issues only advise the user, so an invalid list is dropped rather than failing the CV, and so
+ * is an issue whose text PostgreSQL can't store (it would fail the whole save).
+ */
 function validIssues(issues: unknown, log: Logger): GenerationIssue[] {
   const parsed = GenerationIssuesSchema.safeParse(issues);
-  if (parsed.success) return parsed.data;
-  log.warn({ err: parsed.error }, 'The generated issues were invalid; saving the CV without them');
-  return [];
+  if (!parsed.success) {
+    log.warn(
+      { err: parsed.error },
+      'The generated issues were invalid; saving the CV without them',
+    );
+    return [];
+  }
+  const storable = parsed.data.filter((issue) =>
+    [issue.target, issue.question, issue.why].every(isStorableText),
+  );
+  if (storable.length < parsed.data.length) {
+    log.warn({ dropped: parsed.data.length - storable.length }, 'Dropped unstorable issues');
+  }
+  return storable;
 }
 
 /**
@@ -166,7 +185,13 @@ export function createGenerationWorker({
         signal,
         log,
         onStep: async (step) => {
-          if (!(await repository.heartbeat(lease, step))) throw new LeaseLostError();
+          // A database error isn't a lost lease: every write stays fenced by the lease, and the
+          // periodic heartbeat and stale recovery cover a longer outage.
+          const held = await repository.heartbeat(lease, step).catch((error: unknown) => {
+            log.warn({ err: error }, 'Heartbeat failed');
+            return true;
+          });
+          if (!held) throw new LeaseLostError();
         },
       }),
       signal,

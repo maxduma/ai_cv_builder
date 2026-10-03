@@ -190,6 +190,77 @@ describe('POST /api/cvs/:cvId/generations', () => {
     expect(db.jobs).toHaveLength(1);
   });
 
+  it('starts again after a failed generation, from the sources as they are now', async () => {
+    const { start, baseUrl, cv, repositories, db } = await setup();
+    const detail = async () =>
+      (await (await fetch(`${baseUrl}/api/cvs/${cv.id}`)).json()) as CvDetail;
+    const listed = async () =>
+      ((await (await fetch(`${baseUrl}/api/cvs`)).json()) as CvListResponse).items[0];
+    const failed = (await (await start()).json()) as GenerationJobDto;
+    const lease = await repositories.generation.claimNext();
+    await repositories.generation.fail(lease!, JOB_FAILURES.aiTimeout);
+
+    expect(await listed()).toMatchObject({ status: 'failed' });
+    expect(await detail()).toMatchObject({
+      status: 'failed',
+      latestGeneration: { id: failed.id, status: 'FAILED', errorCode: 'AI_TIMEOUT' },
+      content: null,
+      contentVersion: 0,
+    });
+
+    // "Edit details" saves the sources, then starts again.
+    const notes = `${NOTES} Also mentored two juniors.`;
+    await sendJson(`${baseUrl}/api/cvs/${cv.id}`, 'PATCH', { sourceText: notes });
+    const response = await start();
+    const retry = (await response.json()) as GenerationJobDto;
+
+    expect(response.status).toBe(202);
+    expect(retry.id).not.toBe(failed.id);
+    expect(db.jobs[1]?.input).toMatchObject({ sourceText: notes });
+    expect(await detail()).toMatchObject({
+      status: 'generating',
+      latestGeneration: { id: retry.id },
+    });
+
+    await completeGeneration(repositories);
+
+    expect(await detail()).toMatchObject({
+      status: 'ready',
+      contentVersion: 1,
+      questions: [expect.objectContaining({ question: ISSUES[0]!.question })],
+    });
+  });
+
+  it('keeps a queued generation’s sources when the PDF is replaced or removed', async () => {
+    const { start, baseUrl, cv, db } = await setup({ targetRole: 'AI Engineer' });
+    const upload = (name: string) => {
+      const form = new FormData();
+      form.append('file', new Blob(['%PDF-1.7 body'], { type: 'application/pdf' }), name);
+      return fetch(`${baseUrl}/api/cvs/${cv.id}/source-document`, { method: 'PUT', body: form });
+    };
+    await upload('first.pdf');
+    await start();
+    const snapshot = structuredClone(db.jobs[0]!.input);
+
+    await upload('second.pdf');
+    await fetch(`${baseUrl}/api/cvs/${cv.id}/source-document`, { method: 'DELETE' });
+
+    expect(db.documents).toHaveLength(0);
+    expect(db.jobs[0]!.input).toEqual(snapshot);
+    expect(snapshot).toMatchObject({ sourceDocument: { originalName: 'first.pdf' } });
+  });
+
+  it('moves a CV to the top of My CVs once it is generated', async () => {
+    const { start, baseUrl, cv, repositories } = await setup();
+    await sendJson(`${baseUrl}/api/cvs`, 'POST', { targetRole: 'Data Engineer' });
+    await start();
+
+    await completeGeneration(repositories);
+    const list = (await (await fetch(`${baseUrl}/api/cvs`)).json()) as CvListResponse;
+
+    expect(list.items.map((item) => item.id)[0]).toBe(cv.id);
+  });
+
   it("can't start a generation for another user's CV", async () => {
     const { start, db } = await setup();
 

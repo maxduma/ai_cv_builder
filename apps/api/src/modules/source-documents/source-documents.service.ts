@@ -1,5 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { SOURCE_PDF_MAX_PAGES, SOURCE_TEXT_MIN_LENGTH } from '@cv-builder/shared';
+import {
+  SOURCE_PDF_MAX_PAGES,
+  SOURCE_PDF_MAX_TEXT_LENGTH,
+  SOURCE_TEXT_MIN_LENGTH,
+} from '@cv-builder/shared';
 import {
   type PdfTextExtractor,
   PdfTooManyPagesError,
@@ -31,12 +35,20 @@ export function hasPdfSignature(bytes: Uint8Array): boolean {
   return head.includes(PDF_SIGNATURE);
 }
 
-/** A file name that is safe to store and show: no path, no control characters, bounded length. */
+/**
+ * Control characters, and the bidirectional controls that could make `CV‮fdp.exe` display as
+ * `CVexe.pdf`. Joiners (ZWJ in emoji and many scripts) are kept.
+ */
+const UNSAFE_IN_FILE_NAME = /[\p{Cc}؜‎‏‪-‮⁦-⁩]/gu;
+
+/**
+ * A file name that is safe to store and show: no path, no control characters, at most 255
+ * characters (cut between code points, never through an emoji).
+ */
 export function cleanFileName(name: string): string {
   const base = name.split(/[\\/]/).pop() ?? '';
-  // eslint-disable-next-line no-control-regex -- stripping control characters is the point
-  const cleaned = base.replace(/[\u0000-\u001f\u007f]/g, '').trim();
-  return cleaned.slice(0, 255) || 'CV.pdf';
+  const cleaned = base.replace(UNSAFE_IN_FILE_NAME, '').trim();
+  return Array.from(cleaned).slice(0, 255).join('') || 'CV.pdf';
 }
 
 interface Dependencies {
@@ -111,6 +123,10 @@ export function createSourceDocumentsService({
       const extractedText = text.trim();
       if (extractedText.length < SOURCE_TEXT_MIN_LENGTH) {
         throw new AppError(422, 'PDF_NO_TEXT', 'The PDF has no selectable text (it may be a scan)');
+      }
+      // All of it is stored and sent to Claude with every generation.
+      if (extractedText.length > SOURCE_PDF_MAX_TEXT_LENGTH) {
+        throw new AppError(422, 'PDF_TOO_MUCH_TEXT', 'The PDF has more text than a CV');
       }
 
       // The key never contains anything the client chose.

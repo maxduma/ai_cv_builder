@@ -12,13 +12,15 @@ export const SOURCE_TEXT_MAX_LENGTH = 5_000;
 
 /**
  * Trimmed text that can be cleared: `''` and `null` both mean "no value". Wrapped in `.optional()`
- * below, a missing key means "leave unchanged", which PATCH relies on.
+ * below, a missing key means "leave unchanged", which PATCH relies on. U+0000 (which text pasted
+ * from a PDF viewer can contain) is removed: PostgreSQL text can't store it.
  */
 const clearableText = (schema: z.ZodString) =>
-  z.preprocess(
-    (value) => (typeof value === 'string' && value.trim() === '' ? null : value),
-    schema.nullable(),
-  );
+  z.preprocess((value) => {
+    if (typeof value !== 'string') return value;
+    const text = value.replaceAll('\u0000', '');
+    return text.trim() === '' ? null : text;
+  }, schema.nullable());
 
 const targetRole = clearableText(
   z

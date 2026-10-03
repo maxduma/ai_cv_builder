@@ -282,6 +282,51 @@ describe('applyAnswerChanges', () => {
       ]);
     });
 
+    it('takes the change that names the entry, not another one the answer describes', () => {
+      // "March 2021. Before that I was an engineer at Acme, 2019–2021."
+      const theirs = changed(request('experience', { itemId: 'e1' }), {
+        followUp: '',
+        experience: [
+          role({ id: 'e1', start: 'Mar 2021' }),
+          role({ title: 'Engineer', company: 'Acme', start: '2019', end: '2021' }),
+        ],
+      });
+
+      expect(theirs).toEqual(edited((cv) => void (cv.experience[0]!.start = 'Mar 2021')));
+    });
+
+    it('applies nothing when several changes without an id could be the entry', () => {
+      const experience = changed(request('experience', { itemId: 'e1' }), {
+        followUp: '',
+        experience: [
+          role({ company: 'Acme', start: '2019' }),
+          role({ company: 'Shopwise', start: '2016' }),
+        ],
+      });
+      const education = changed(request('education', { itemId: 'ed1' }), {
+        followUp: '',
+        education: [
+          school({ details: 'Thesis on payment fraud.' }),
+          school({ degree: 'MSc Data Science', school: 'Nova SBE' }),
+        ],
+      });
+
+      expect(experience).toEqual(CV);
+      expect(education).toEqual(CV);
+    });
+
+    it('adds every new entry when a question is about the whole section', () => {
+      const theirs = changed(request('experience'), {
+        followUp: '',
+        experience: [
+          role({ title: 'Engineer', company: 'Acme', start: '2019' }),
+          role({ title: 'Intern', company: 'Shopwise', start: '2016' }),
+        ],
+      });
+
+      expect(ids(theirs.experience)).toEqual(['e1', 'e2', 'new-1', 'new-2']);
+    });
+
     it('adds an entry without an id when a question is about no entry in particular', () => {
       const theirs = changed(request('experience'), {
         followUp: '',
@@ -567,6 +612,29 @@ describe('applyAnswerChanges', () => {
       expect(theirs).toEqual(
         edited((draft) => void (draft.contact.workSetup = 'Open to remote roles'), cv),
       );
+    });
+
+    it('doesn’t take an email or a phone the CV has, repeated in another form, for a new one', () => {
+      const cv = edited((draft) => void (draft.contact.phone = '+351 912 345 678'));
+
+      const result = applyAnswerChanges(
+        request('contact', { answer: 'I’m based in Porto now.', cv }),
+        {
+          followUp: '',
+          contact: contact({
+            email: 'ALEX@example.com',
+            phone: '+351912345678',
+            location: 'Porto',
+          }),
+        },
+        counter(),
+      );
+
+      // Only the location changes, and the stored email and phone keep their form.
+      expect(result).toEqual({
+        kind: 'changes',
+        theirs: edited((draft) => void (draft.contact.location = 'Porto'), cv),
+      });
     });
 
     it('doesn’t add a link the CV already has, however it is written', () => {

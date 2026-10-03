@@ -72,6 +72,64 @@ describe('error handling', () => {
     ]);
   });
 
+  it.each([
+    [
+      'a body too large',
+      { 'Content-Type': 'application/json' },
+      JSON.stringify({ sourceText: 'x'.repeat(1_100_000) }),
+      413,
+      'PAYLOAD_TOO_LARGE',
+    ],
+    [
+      'a charset it can’t read',
+      { 'Content-Type': 'application/json; charset=latin1' },
+      '{}',
+      415,
+      'VALIDATION_ERROR',
+    ],
+    [
+      'an unknown encoding',
+      { 'Content-Type': 'application/json', 'Content-Encoding': 'compress' },
+      '{}',
+      415,
+      'VALIDATION_ERROR',
+    ],
+  ])('answers a request with %s as the client’s error', async (_, headers, body, status, code) => {
+    const { baseUrl } = await startApp();
+
+    const response = await fetch(`${baseUrl}/api/cvs`, { method: 'POST', headers, body });
+
+    expect(response.status).toBe(status);
+    expect(((await response.json()) as ApiErrorBody).error.code).toBe(code);
+  });
+
+  it('answers a malformed %-escape in the URL with 400', async () => {
+    const { baseUrl } = await startApp();
+
+    const response = await fetch(`${baseUrl}/api/cvs/%E0%A4%A`);
+    const body = (await response.json()) as ApiErrorBody;
+
+    expect(response.status).toBe(400);
+    expect(body.error).toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'The request could not be read',
+    });
+  });
+
+  it('keeps API responses out of the browser’s cache', async () => {
+    const { baseUrl } = await startApp();
+
+    const ok = await fetch(`${baseUrl}/api/cvs`);
+    const failed = await fetch(`${baseUrl}/api/cvs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{',
+    });
+
+    expect(ok.headers.get('cache-control')).toBe('no-store');
+    expect(failed.headers.get('cache-control')).toBe('no-store');
+  });
+
   it('rejects requests without a current user', async () => {
     const { baseUrl } = await startApp({ resolveCurrentUser: async () => null });
 

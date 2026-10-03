@@ -275,6 +275,11 @@ describe('Claude CV generator', () => {
         JOB_FAILURES.aiSchemaMismatch,
       ],
       [
+        'has a fact too long for the CV',
+        answer(draft({ experience: [{ ...ROLE, title: 'x'.repeat(161) }] })),
+        JOB_FAILURES.aiSchemaMismatch,
+      ],
+      [
         'breaks off',
         new ClaudeError('unavailable', { type: 'overloaded_error', midStream: true }),
         JOB_FAILURES.aiUnavailable,
@@ -398,6 +403,41 @@ describe('Claude CV generator', () => {
     );
   });
 
+  it('drops a skill or a question that breaks its limits instead of failing the CV', async () => {
+    const { result, requests } = run([
+      answer(
+        draft({
+          skills: ['Go', 'x'.repeat(61), 'PostgreSQL'],
+          issues: [
+            AI_ISSUE,
+            { ...AI_ISSUE, question: '' },
+            { ...AI_ISSUE, target: 'x'.repeat(121) },
+          ],
+        }),
+      ),
+    ]);
+
+    const cv = await result;
+
+    expect(requests).toHaveLength(1);
+    expect(CvContentSchema.parse(cv.content).skills.map((skill) => skill.name)).toEqual([
+      'Go',
+      'PostgreSQL',
+    ]);
+    expect(cv.issues).toEqual([ISSUE]);
+  });
+
+  it('stores a role with an end date as ended, even if marked current', async () => {
+    const { result } = run([answer(draft({ experience: [{ ...ROLE, end: '2023' }] }))]);
+
+    const cv = await result;
+
+    expect(CvContentSchema.parse(cv.content).experience[0]).toMatchObject({
+      current: false,
+      end: '2023',
+    });
+  });
+
   it('allows exactly what a stored CV and its issues allow', async () => {
     const full = (length: number) => 'x'.repeat(length);
     // A usable email, so the generator keeps it: 254 characters.
@@ -495,7 +535,7 @@ describe('Claude CV generator', () => {
       expect(GenerationIssuesSchema.safeParse(cv.issues).success).toBe(true);
     });
 
-    it('asks only while there is room for another issue', async () => {
+    it('makes room for the questions about removed details', async () => {
       const issues = many(10, (index) => ({ ...ISSUE, question: `Question ${index + 1}?` }));
       const { result } = run([
         answer(
@@ -509,7 +549,29 @@ describe('Claude CV generator', () => {
       const cv = await result;
 
       expect(CvContentSchema.parse(cv.content).contact.email).toBe('');
-      expect(cv.issues).toEqual(issues);
+      // The model's least important question gives way.
+      expect(cv.issues).toEqual([
+        ...issues.slice(0, 9),
+        expect.objectContaining({
+          section: 'contact',
+          question: 'What email address should employers use to contact you?',
+        }),
+      ]);
+      expect(GenerationIssuesSchema.safeParse(cv.issues).success).toBe(true);
+    });
+
+    it('asks for a link whose address the sources lost', async () => {
+      const { result } = run([
+        answer(draft({ contact: { ...CONTACT, links: [{ label: 'GitHub', url: '' }] } })),
+      ]);
+
+      const cv = await result;
+
+      expect(CvContentSchema.parse(cv.content).contact.links).toEqual([]);
+      expect(cv.issues).toEqual([
+        ISSUE,
+        expect.objectContaining({ section: 'contact', question: expect.stringContaining('links') }),
+      ]);
     });
 
     it('asks for an email the sources give in a form no one can write to', async () => {
