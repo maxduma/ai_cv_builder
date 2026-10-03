@@ -15,7 +15,7 @@ interface Options {
    * pdf.js parses on the event loop (there is no worker). When the deadline passes, the document
    * is destroyed, which stops pdf.js the next time it yields (e.g. between pages or streams). It
    * can't interrupt one long synchronous stretch, so a crafted file can still hold the event loop
-   * for a while (see the README).
+   * for a while (see docs/limitations.md).
    */
   timeoutMs: number;
 }

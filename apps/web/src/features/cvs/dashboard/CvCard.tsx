@@ -18,6 +18,9 @@ interface Props {
   now: number;
   menuOpen: boolean;
   onMenuOpenChange: (open: boolean) => void;
+  /** The name is being typed. The page owns it, so it can hold the list still meanwhile. */
+  renaming: boolean;
+  onRenamingChange: (renaming: boolean) => void;
   /** The card is on its way out after a delete (its animation). */
   leaving: boolean;
   onAskDelete: () => void;
@@ -27,7 +30,7 @@ interface Props {
 
 /**
  * One saved CV: a thumbnail of the page, its status, a ⋯ menu (rename, delete) and an "Open"
- * link that covers the card. Renaming happens in place; the page owns the rest of the state.
+ * link that covers the card. Renaming happens in place.
  */
 export function CvCard({
   cv,
@@ -35,11 +38,12 @@ export function CvCard({
   now,
   menuOpen,
   onMenuOpenChange,
+  renaming,
+  onRenamingChange,
   leaving,
   onAskDelete,
   onRenamed,
 }: Props) {
-  const [renaming, setRenaming] = useState(false);
   const [flashing, setFlashing] = useState(false);
 
   useEffect(() => {
@@ -50,7 +54,7 @@ export function CvCard({
 
   function startRename() {
     onMenuOpenChange(false);
-    setRenaming(true);
+    onRenamingChange(true);
   }
 
   return (
@@ -84,7 +88,7 @@ export function CvCard({
               <RenameField
                 cv={cv}
                 onDone={({ renamedTo, focusBack }) => {
-                  setRenaming(false);
+                  onRenamingChange(false);
                   if (renamedTo) {
                     setFlashing(true);
                     onRenamed(renamedTo);

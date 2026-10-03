@@ -25,7 +25,9 @@ const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 
 /** "My CVs": the signed-in user's CVs, with loading, empty and error states from the design. */
 export function CvListPage() {
-  const { data, error, isFetching, refetch } = useCvs();
+  // The list is not refreshed while a name is typed (see `listPollInterval`).
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const { data, error, isFetching, refetch } = useCvs({ paused: renamingId !== null });
   const queryClient = useQueryClient();
   const deleteCv = useDeleteCv();
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -148,6 +150,11 @@ export function CvListPage() {
               now={now}
               menuOpen={openMenuId === cv.id}
               onMenuOpenChange={(open) => setOpenMenuId(open ? cv.id : null)}
+              renaming={renamingId === cv.id}
+              // A card that stops renaming must not end the rename of another one that has started.
+              onRenamingChange={(renaming) =>
+                setRenamingId((current) => (renaming ? cv.id : current === cv.id ? null : current))
+              }
               leaving={leavingId === cv.id}
               onAskDelete={() => askDelete(cv)}
               onRenamed={(title) => setAnnouncement(`Renamed to “${title}”`)}

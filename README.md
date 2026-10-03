@@ -2,7 +2,7 @@
 
 A fullstack app that turns a PDF or a few notes plus a target role into a CV draft written by Claude, which you review, edit and download as an A4 PDF. Built as a take-home assignment.
 
-**Status:** the whole flow works end to end: sign up, create a CV from a PDF and/or notes, follow the generation (a background job that survives reloads), answer the questions the AI asks about what is missing, edit every field, rename or delete CVs, and download the PDF. 607 automated tests, plus 23 on PostgreSQL, cover the API, the shared code and the editor's autosave.
+**Status:** the whole flow works end to end: sign up, create a CV from a PDF and/or notes, follow the generation (a background job that survives reloads), answer the questions the AI asks about what is missing, edit every field, rename or delete CVs, and download the PDF. 612 automated tests, plus 24 on PostgreSQL, cover the API, the shared code and the editor's autosave.
 
 **Stack:** React 19, TypeScript, Vite · Node.js 22, Express 5 (REST), Zod · PostgreSQL 17, Prisma · Anthropic API (Claude Opus 5.5, structured output) · React-PDF · Docker Compose, pnpm, Vitest, GitHub Actions.
 
@@ -11,7 +11,7 @@ More detail: [docs/architecture.md](docs/architecture.md) · [docs/api.md](docs/
 
 ## Quick start
 
-You need Docker (Docker Desktop, or Docker Engine with Compose v2) and an Anthropic API key. Nothing else is installed on your machine.
+You need Docker (Docker Desktop, or Docker Engine with Compose v2) and an Anthropic API key that can use `claude-opus-5-5`. Nothing else is installed on your machine.
 
 1. Copy the settings file:
 
@@ -29,9 +29,9 @@ You need Docker (Docker Desktop, or Docker Engine with Compose v2) and an Anthro
 
 4. Wait for `API listening on port 4000` in the log. The first start builds the image and installs dependencies, which takes a few minutes; later starts take seconds.
 
-5. Open http://localhost:5173, sign up, and press **Create new CV**.
+5. Open http://localhost:5173, sign up, and press **Create CV**.
 
-Without a key the app still runs in demo mode: development mocks walk through the real steps and save clearly labelled sample content (the health check, `http://localhost:4000/api/health`, then reports AI as `not_configured`).
+If a generation fails right away, `docker compose logs api` names the cause (for example a key without access to the model, or to a beta the request uses). Without a key the app still runs in demo mode: development mocks walk through the real steps and save clearly labelled sample content (the health check, `http://localhost:4000/api/health`, then reports AI as `not_configured`).
 
 - **On a phone:** with the phone on the same network, open `http://<your-computer-ip>:5173` (on macOS, `ipconfig getifaddr en0` prints the address).
 - **A port is busy:** `WEB_PORT=5174 docker compose up` (also `API_PORT`, `DB_PORT`).
@@ -102,9 +102,9 @@ The limits, honestly: only contact details are checked against the sources mecha
 I built the project with AI coding tools and directed and reviewed the result:
 
 - **Design.** I designed the screens, desktop and mobile with their states (loading, errors, empty, confirmations), on Claude's design canvas first; the web app's markup and CSS follow it.
-- **Implementation.** Claude Code (mostly Claude Opus 5.5) wrote the code one step at a time. For each step I wrote the requirements; it read the code base and proposed a plan, asking about decisions it couldn't make alone; I corrected or approved the plan; then it implemented it, ran lint, types and tests, and walked through the flow in a browser. I reviewed the changes and the pull requests. Commits carry a `Co-Authored-By: Claude` trailer.
+- **Implementation.** Claude Code (Claude Opus 5.5 and Sonnet 5.5, as the commit trailers say) wrote the code one step at a time. For each step I wrote the requirements; it read the code base and proposed a plan, asking about decisions it couldn't make alone; I corrected or approved the plan; then it implemented it, ran lint, types and tests, and walked through the flow in a browser. I reviewed the changes and the pull requests. Commits carry a `Co-Authored-By: Claude` trailer.
 - **Review.** Before submitting I ran a multi-agent review of the whole project (reviewers by area, skeptical verifiers that tried to refute each finding), and a second review that compared the code with the assignment sentence by sentence. Confirmed findings were fixed with tests.
-- **What review and testing caught in AI-written code,** each fixed with a test: a U+0000 in pasted text made PostgreSQL reject the write and the API answer `500`; `crypto.randomUUID` doesn't exist on `http://<computer-ip>:5173`, so adding a row did nothing from a phone; the prompt asked for roles "most recent first" although the assignment says most relevant first; the headline could be set to a title the person might not hold; and a delete racing a finishing generation could deadlock in PostgreSQL (the generation locked the job before the CV, everything else the other way round).
+- **What review and testing caught in AI-written code,** each fixed with a test: a U+0000 in pasted text made PostgreSQL reject the write and the API answer `500`; `crypto.randomUUID` doesn't exist on `http://<computer-ip>:5173`, so adding a row did nothing from a phone; the prompt asked for roles "most recent first" although the assignment says most relevant first; the headline could be set to a title the person might not hold; and a delete racing a finishing generation could deadlock in PostgreSQL (the generation locked the job before the CV, every other writer that takes both the other way round).
 - **What stayed with me:** the requirements, the product and scope decisions, approving each plan, and reviewing the result.
 
 Claude is also part of the product: the API calls the Claude API to write CVs and apply answers. That is separate from the tools used to build it.

@@ -47,16 +47,17 @@
   z-index: 45;
 }
 
-/* A deleted card leaves before the others close the gap. */
-.cv-item.cv-leave {
-  animation: cvb-leave var(--dur-base) var(--ease-in) forwards;
-  pointer-events: none;
-}
-
 /* Cards rise in sequence when the list first appears (motion spec: 600ms, 80ms apart). */
 .cv-item.cv-enter {
   animation: cvb-rise 620ms var(--ease-out) both;
   animation-delay: calc(80ms + var(--i, 0) * 80ms);
+}
+
+/* A deleted card leaves before the others close the gap. After the rule above, which it must
+   beat: a card has both classes, and with equal specificity the later rule wins. */
+.cv-item.cv-leave {
+  animation: cvb-leave var(--dur-base) var(--ease-in) forwards;
+  pointer-events: none;
 }
 
 .cv-card {

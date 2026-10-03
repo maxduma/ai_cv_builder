@@ -28,7 +28,7 @@ Everything else is a constant next to the code it tunes, so there is nothing els
 | Log level                                              | `LOG_LEVEL` in `lib/logger.ts`                                                                                                             |
 | Host ports (5173, 4000 and 54320) and database login   | `docker-compose.yml`; a busy port can be moved with `WEB_PORT=5174 docker compose up` (also `API_PORT`, `DB_PORT`)                         |
 
-`NODE_ENV`, `PORT`, `DATABASE_URL` and `UPLOAD_DIR` (uploaded PDFs, in the `uploads` volume) are set in `docker-compose.yml`. Sessions are signed with `JWT_SECRET` when the process has one; Compose gives it none, so the API uses a public development secret and says so in its log. Production (`NODE_ENV=production`) refuses to start without a private `JWT_SECRET` and an `ANTHROPIC_API_KEY`. The API validates its environment at startup and exits with a readable message if anything is invalid.
+`NODE_ENV`, `PORT`, `DATABASE_URL` and `UPLOAD_DIR` (uploaded PDFs, in the `uploads` volume) are set in `docker-compose.yml`. Sessions are signed with `JWT_SECRET` when the process has one (Compose passes it through if it is set in your shell or in `.env`); otherwise the API uses a public development secret and says so in its log. Production (`NODE_ENV=production`) refuses to start without a private `JWT_SECRET` and an `ANTHROPIC_API_KEY`. The API validates its environment at startup and exits with a readable message if anything is invalid.
 
 ## Project structure
 
