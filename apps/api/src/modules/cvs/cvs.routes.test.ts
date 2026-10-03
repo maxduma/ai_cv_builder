@@ -2,6 +2,7 @@ import {
   type ApiErrorBody,
   type ContentConflictDetails,
   CV_LIMITS,
+  CV_TITLE_MAX_LENGTH,
   type CvContent,
   CvContentSchema,
   type CvDetail,
@@ -12,6 +13,7 @@ import {
 import { describe, expect, it } from 'vitest';
 import { largestCv } from '../../test/largest-cv';
 import {
+  createMemoryStorage,
   sendJson,
   startApp,
   startAppWithTwoAccounts,
@@ -93,6 +95,17 @@ async function createGeneratedCv(
   if (!job) throw new Error('no job to claim');
   await repositories.generation.succeed(job, content, issues);
   return cv;
+}
+
+/** Uploads a source PDF to the CV (the app's extractor is a fake, so the bytes only look like one). */
+async function uploadPdf(baseUrl: string, cvId: string) {
+  const form = new FormData();
+  form.append('file', new Blob(['%PDF-1.7 body'], { type: 'application/pdf' }), 'cv.pdf');
+  const response = await fetch(`${baseUrl}/api/cvs/${cvId}/source-document`, {
+    method: 'PUT',
+    body: form,
+  });
+  expect(response.status).toBe(200);
 }
 
 describe('POST /api/cvs', () => {
@@ -311,6 +324,110 @@ describe('PATCH /api/cvs/:cvId', () => {
     expect(response.status).toBe(400);
   });
 
+  describe('renaming', () => {
+    const patch = (baseUrl: string, cvId: string, body: unknown) =>
+      sendJson(`${baseUrl}/api/cvs/${cvId}`, 'PATCH', body);
+
+    it('renames the CV and leaves its role and text alone', async () => {
+      const { baseUrl, db } = await startApp();
+      const cv = await createCv(baseUrl, {
+        targetRole: 'AI Engineer',
+        sourceText: 'Built retrieval pipelines for three years.',
+      });
+
+      const response = await patch(baseUrl, cv.id, { title: 'AI Engineer · Fieldline' });
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({
+        title: 'AI Engineer · Fieldline',
+        targetRole: 'AI Engineer',
+        sourceText: 'Built retrieval pipelines for three years.',
+      });
+      expect(db.cvs[0]).toMatchObject({ title: 'AI Engineer · Fieldline' });
+    });
+
+    it('shows the new name in the list', async () => {
+      const { baseUrl } = await startApp();
+      const cv = await createCv(baseUrl);
+
+      await patch(baseUrl, cv.id, { title: 'For Fieldline' });
+
+      const list = (await (await fetch(`${baseUrl}/api/cvs`)).json()) as CvListResponse;
+      expect(list.items).toMatchObject([{ id: cv.id, title: 'For Fieldline' }]);
+    });
+
+    it('tidies the name: one line, trimmed, no U+0000', async () => {
+      const { baseUrl, db } = await startApp();
+      const cv = await createCv(baseUrl);
+
+      await patch(baseUrl, cv.id, { title: '  Platform \n\t lead\u0000 ' });
+
+      expect(db.cvs[0]?.title).toBe('Platform lead');
+    });
+
+    it.each([
+      ['empty', ''],
+      ['blank', '  \n '],
+      ['null', null],
+      ['a number', 7],
+      ['too long', 'x'.repeat(CV_TITLE_MAX_LENGTH + 1)],
+    ])('refuses a name that is %s, and changes nothing', async (_, title) => {
+      const { baseUrl, db } = await startApp();
+      const cv = await createCv(baseUrl);
+
+      const response = await patch(baseUrl, cv.id, { title });
+      const body = (await response.json()) as ApiErrorBody;
+
+      expect(response.status).toBe(400);
+      expect(body.error.code).toBe('VALIDATION_ERROR');
+      expect(db.cvs[0]?.title).toBe('AI Engineer');
+    });
+
+    it('keeps naming the CV after its role until it is renamed', async () => {
+      const { baseUrl, db } = await startApp();
+      const cv = await createCv(baseUrl);
+
+      await patch(baseUrl, cv.id, { targetRole: 'Data Engineer' });
+      expect(db.cvs[0]?.title).toBe('Data Engineer');
+      await patch(baseUrl, cv.id, { targetRole: null });
+      expect(db.cvs[0]?.title).toBe('Untitled CV');
+    });
+
+    it('keeps a name the person chose when the role changes later', async () => {
+      const { baseUrl, db } = await startApp();
+      const cv = await createCv(baseUrl);
+      await patch(baseUrl, cv.id, { title: 'For Fieldline' });
+
+      await patch(baseUrl, cv.id, { targetRole: 'Data Engineer' });
+
+      expect(db.cvs[0]).toMatchObject({ title: 'For Fieldline', targetRole: 'Data Engineer' });
+    });
+
+    it('lets a name sent together with a new role win', async () => {
+      const { baseUrl, db } = await startApp();
+      const cv = await createCv(baseUrl);
+
+      await patch(baseUrl, cv.id, { targetRole: 'Data Engineer', title: 'For Fieldline' });
+
+      expect(db.cvs[0]).toMatchObject({ title: 'For Fieldline', targetRole: 'Data Engineer' });
+    });
+
+    it("can't rename another user's CV", async () => {
+      const { baseUrl, db } = await startApp();
+      const cv = await createCv(baseUrl);
+
+      const response = await sendJson(
+        `${baseUrl}/api/cvs/${cv.id}`,
+        'PATCH',
+        { title: 'Hijacked' },
+        { [TEST_USER_HEADER]: USER_B },
+      );
+
+      expect(response.status).toBe(404);
+      expect(db.cvs[0]?.title).toBe('AI Engineer');
+    });
+  });
+
   it("can't change another user's CV", async () => {
     const { baseUrl, db } = await startApp();
     const cv = await createCv(baseUrl);
@@ -324,6 +441,133 @@ describe('PATCH /api/cvs/:cvId', () => {
 
     expect(response.status).toBe(404);
     expect(db.cvs[0]?.targetRole).toBe('AI Engineer');
+  });
+});
+
+describe('DELETE /api/cvs/:cvId', () => {
+  const remove = (baseUrl: string, cvId: string, headers: Record<string, string> = {}) =>
+    fetch(`${baseUrl}/api/cvs/${cvId}`, { method: 'DELETE', headers });
+
+  it('deletes the CV with its PDF, generation and questions', async () => {
+    const app = await startApp();
+    const cv = await createGeneratedCv(app, WITH_ROLE, ISSUES);
+    await uploadPdf(app.baseUrl, cv.id);
+    expect(app.files.size).toBe(1);
+    expect(app.db.questions).toHaveLength(2);
+
+    const response = await remove(app.baseUrl, cv.id);
+
+    expect(response.status).toBe(204);
+    expect(await response.text()).toBe('');
+    expect(app.db.cvs).toEqual([]);
+    expect(app.db.documents).toEqual([]);
+    expect(app.db.jobs).toEqual([]);
+    expect(app.db.questions).toEqual([]);
+    expect(app.files.size).toBe(0);
+  });
+
+  it('removes the CV from the list and answers 404 to everything about it', async () => {
+    const { baseUrl } = await startApp();
+    const cv = await createCv(baseUrl);
+
+    await remove(baseUrl, cv.id);
+
+    const list = (await (await fetch(`${baseUrl}/api/cvs`)).json()) as CvListResponse;
+    expect(list.items).toEqual([]);
+    expect((await fetch(`${baseUrl}/api/cvs/${cv.id}`)).status).toBe(404);
+    expect((await fetch(`${baseUrl}/api/cvs/${cv.id}/pdf`)).status).toBe(404);
+    expect(
+      (await fetch(`${baseUrl}/api/cvs/${cv.id}/generations`, { method: 'POST' })).status,
+    ).toBe(404);
+  });
+
+  it('answers 404 the second time, and for a CV that never existed', async () => {
+    const { baseUrl } = await startApp();
+    const cv = await createCv(baseUrl);
+
+    expect((await remove(baseUrl, cv.id)).status).toBe(204);
+    const again = await remove(baseUrl, cv.id);
+    const unknown = await remove(baseUrl, '0199a000-0000-7000-8000-0000000000ff');
+
+    expect(again.status).toBe(404);
+    expect(((await again.json()) as ApiErrorBody).error.code).toBe('NOT_FOUND');
+    expect(unknown.status).toBe(404);
+  });
+
+  it('refuses a malformed id', async () => {
+    const { baseUrl } = await startApp();
+
+    expect((await remove(baseUrl, 'not-a-uuid')).status).toBe(400);
+  });
+
+  it('leaves the same user’s other CVs, and other users’ CVs, alone', async () => {
+    const app = await startApp();
+    const doomed = await createCv(app.baseUrl);
+    const sibling = await createCv(app.baseUrl, { targetRole: 'Data Engineer' });
+    await uploadPdf(app.baseUrl, sibling.id);
+    const foreign = await sendJson(
+      `${app.baseUrl}/api/cvs`,
+      'POST',
+      { targetRole: 'Designer' },
+      { [TEST_USER_HEADER]: USER_B },
+    );
+    const foreignCv = (await foreign.json()) as CvDetail;
+
+    await remove(app.baseUrl, doomed.id);
+
+    expect(app.db.cvs.map((row) => row.id).sort()).toEqual([sibling.id, foreignCv.id].sort());
+    expect(app.db.documents).toHaveLength(1);
+    expect(app.files.size).toBe(1);
+  });
+
+  it('can’t delete another user’s CV, and changes nothing', async () => {
+    const app = await startApp();
+    const cv = await createCv(app.baseUrl);
+    await uploadPdf(app.baseUrl, cv.id);
+    const before = structuredClone(app.db);
+
+    const response = await remove(app.baseUrl, cv.id, { [TEST_USER_HEADER]: USER_B });
+
+    expect(response.status).toBe(404);
+    expect(app.db).toEqual(before);
+    expect(app.files.size).toBe(1);
+  });
+
+  it('deletes a CV whose generation is still queued, and nothing is left to run', async () => {
+    const { baseUrl, db, repositories } = await startApp();
+    const cv = await createCv(baseUrl, {
+      targetRole: 'AI Engineer',
+      sourceText: 'Built retrieval pipelines and evaluation tooling for three years.',
+    });
+    await fetch(`${baseUrl}/api/cvs/${cv.id}/generations`, { method: 'POST' });
+    expect(db.jobs).toHaveLength(1);
+
+    const response = await remove(baseUrl, cv.id);
+
+    expect(response.status).toBe(204);
+    expect(db.jobs).toEqual([]);
+    expect(await repositories.generation.claimNext()).toBeNull();
+  });
+
+  it('still answers 204 when a stored file can’t be deleted', async () => {
+    const { storage, files } = createMemoryStorage();
+    const app = await startApp({
+      fileStorage: {
+        put: storage.put,
+        delete: async () => {
+          throw new Error('The disk is read-only');
+        },
+      },
+    });
+    const cv = await createCv(app.baseUrl);
+    await uploadPdf(app.baseUrl, cv.id);
+
+    const response = await remove(app.baseUrl, cv.id);
+
+    // The rows are gone for good; the file left behind is only logged.
+    expect(response.status).toBe(204);
+    expect(app.db.cvs).toEqual([]);
+    expect(files.size).toBe(1);
   });
 });
 

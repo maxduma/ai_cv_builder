@@ -33,6 +33,8 @@ erDiagram
 - **Questions** are the AI's questions about a CV, one row each, so each has its own status (`OPEN`, `SKIPPED`, `ANSWERED`, `DISMISSED`), latest answer and follow-up.
 - **Generation jobs** keep a validated snapshot of their `input`, plus their validated `result` and `issues`, which allows auditing and restoring. Replacing or removing a PDF never changes a job's snapshot.
 - **Source documents** store file metadata and the extracted text. The uploaded PDF is kept on local disk (`UPLOAD_DIR`, the `uploads` volume) under a key the API generates, and deleted when it is replaced or removed; generation only uses the extracted text.
+- A CV is named after its target role until it is renamed (`PATCH` with a `title`); a role saved later renames it again only while it still has that automatic name.
+- **Deleting a CV** removes its jobs, questions and documents with it (the foreign keys cascade), in one transaction that locks the CV's row first (as does every writer of a CV and its jobs, so a delete and a generation finishing at the same moment can't wait on each other: a test checks it on PostgreSQL). The stored PDF is deleted once the transaction has committed; if that fails it is only logged, as the rows are already gone. A generation running at that moment finds its job gone at the next heartbeat and stops, and its Claude request is aborted.
 - IDs are UUIDv7 (time-ordered) and all timestamps are `timestamptz`.
 
 ## CV generation as a persistent job

@@ -10,6 +10,7 @@ import pino from 'pino';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Repositories } from '../../db/repositories';
 import { createInMemoryRepositories } from '../../test/in-memory-repositories';
+import { createMemoryStorage } from '../../test/start-app';
 import { createCvsService } from '../cvs/cvs.service';
 import { createQuestionsService } from '../questions/questions.service';
 import type { AnswerHooks, AnswerRequest, AnswerUpdater } from './answers/answer-input';
@@ -107,7 +108,7 @@ async function setup(
   });
   workers.push(worker);
   const job = () => db.jobs[0]!;
-  return { worker, db, job, cvRow: () => db.cvs[0]! };
+  return { worker, db, repositories, job, cvRow: () => db.cvs[0]! };
 }
 
 /** Walks through the four steps, recording them, and returns `output`. */
@@ -351,6 +352,41 @@ describe('generation worker', () => {
     await worker.tick();
 
     expect(job()).toMatchObject({ status: 'PROCESSING', attempts: 2, errorCode: null });
+  });
+
+  it('lets go of a job whose CV is deleted, even if its generator ignores the signal', async () => {
+    const { worker, db, repositories } = await setup(
+      {
+        async generate(_input, { onStep }) {
+          await onStep(0);
+          // The person deletes the CV meanwhile, and its jobs go with it; the next heartbeat notices.
+          await repositories.cvs.removeForUser(USER, db.cvs[0]!.id);
+          return hang();
+        },
+      },
+      { heartbeatIntervalMs: 5 },
+    );
+
+    await worker.tick();
+
+    expect(db.cvs).toEqual([]);
+    expect(db.jobs).toEqual([]);
+  });
+
+  it('writes nothing when its CV is deleted before the result arrives', async () => {
+    const { worker, db, repositories } = await setup({
+      async generate() {
+        await repositories.cvs.removeForUser(USER, db.cvs[0]!.id);
+        return { content: CONTENT, issues: ISSUES };
+      },
+    });
+
+    // The steps weren't reported, so only `succeed` can notice: it finds neither job nor CV.
+    await worker.tick();
+
+    expect(db.cvs).toEqual([]);
+    expect(db.jobs).toEqual([]);
+    expect(db.questions).toEqual([]);
   });
 
   it('puts abandoned jobs back in the queue and fails them after three attempts', async () => {
@@ -616,7 +652,11 @@ async function setupAnswers(options: Omit<SetupOptions, 'jobs' | 'answerUpdater'
   await worker.tick();
 
   const questions = createQuestionsService(repositories.questions);
-  const cvs = createCvsService(repositories.cvs);
+  const cvs = createCvsService({
+    cvs: repositories.cvs,
+    storage: createMemoryStorage().storage,
+    logger: silent,
+  });
   const cvRow = () => db.cvs.find((cv) => cv.id === cvId)!;
   const question = (section: GenerationIssue['section']) =>
     db.questions.find((row) => row.cvId === cvId && row.section === section)!;

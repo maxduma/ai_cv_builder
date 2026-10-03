@@ -9,6 +9,7 @@ import {
   PdfTooManyPagesError,
   PdfUnreadableError,
 } from '../../integrations/extraction/pdf-text-extractor';
+import { deleteStoredFiles } from '../../integrations/storage/delete-files';
 import type { FileStorage } from '../../integrations/storage/file-storage';
 import { AppError, NotFoundError } from '../../lib/errors';
 import type { Logger } from '../../lib/logger';
@@ -67,18 +68,7 @@ export function createSourceDocumentsService({
   extractor,
   logger,
 }: Dependencies) {
-  /** Best effort: a file left behind wastes space but never breaks anything. */
-  async function deleteFiles(keys: string[]) {
-    const results = await Promise.allSettled(keys.map((key) => storage.delete(key)));
-    results.forEach((result, index) => {
-      if (result.status === 'rejected') {
-        logger.warn(
-          { err: result.reason, storageKey: keys[index] },
-          'Could not delete a stored file',
-        );
-      }
-    });
-  }
+  const deleteFiles = (keys: string[]) => deleteStoredFiles(storage, keys, logger);
 
   async function readText(bytes: Uint8Array) {
     try {

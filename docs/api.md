@@ -15,7 +15,8 @@ Apart from `/api/health` and signing up, logging in and logging out, every route
 | `GET /api/cvs`                                      | The user's CVs with their status (`draft`, `generating`, `failed`, `ready`)                                                                      |
 | `POST /api/cvs`                                     | Create a draft `{ targetRole?, sourceText? }`                                                                                                    |
 | `GET /api/cvs/:cvId`                                | A CV with its sources, latest generation, `content` (`null` until generated), `contentVersion` and the AI's `questions`                          |
-| `PATCH /api/cvs/:cvId`                              | Save the target role and/or the free-text source (`""`/`null` clears)                                                                            |
+| `PATCH /api/cvs/:cvId`                              | Rename the CV `{ title }` (one line, 1–120 characters), and/or save the target role and the free-text source (`""`/`null` clears those two)      |
+| `DELETE /api/cvs/:cvId`                             | Delete the CV with its generations, questions and uploaded PDF → `204`; a generation running meanwhile is dropped                                |
 | `PUT /api/cvs/:cvId/source-document`                | Upload the source PDF (multipart field `file`); replaces the previous one                                                                        |
 | `DELETE /api/cvs/:cvId/source-document`             | Remove the source PDF                                                                                                                            |
 | `PUT /api/cvs/:cvId/content`                        | Save edited content `{ baseVersion, content }` → `{ contentVersion }`; `409 CONTENT_CONFLICT` with the newer content when `baseVersion` is stale |

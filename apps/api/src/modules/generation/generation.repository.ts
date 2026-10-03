@@ -247,6 +247,14 @@ export function createGenerationRepository(prisma: PrismaClient) {
      */
     succeed(lease: JobLease, content: CvContent, issues: GenerationIssue[]): Promise<boolean> {
       return prisma.$transaction(async (tx) => {
+        // The CV's row first, as every other writer locks it. Deleting a CV locks its row and then
+        // deletes its jobs, so taking the job first could leave the two waiting on each other. If
+        // the CV is already gone, so is the job, and nothing is locked or written.
+        await tx.$executeRaw`
+          SELECT 1 FROM cvs
+          WHERE id = (SELECT cv_id FROM generation_jobs WHERE id = ${lease.jobId}::uuid)
+          FOR UPDATE`;
+
         const now = new Date();
         const { count } = await tx.generationJob.updateMany({
           where: held(lease),

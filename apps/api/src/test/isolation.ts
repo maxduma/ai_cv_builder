@@ -120,6 +120,7 @@ function requestsFor({ cvId, generationJobId, answerJobId, questionId }: OwnedCv
   return [
     ['GET', `/api/cvs/${cvId}`, {}],
     ['PATCH', `/api/cvs/${cvId}`, json({ targetRole: 'Hijacked' })],
+    ['PATCH', `/api/cvs/${cvId}`, json({ title: 'Hijacked' })],
     ['PUT', `/api/cvs/${cvId}/content`, json({ baseVersion: 1, content: CONTENT })],
     ['PUT', `/api/cvs/${cvId}/source-document`, { body: form }],
     ['DELETE', `/api/cvs/${cvId}/source-document`, {}],
@@ -129,6 +130,7 @@ function requestsFor({ cvId, generationJobId, answerJobId, questionId }: OwnedCv
     ['GET', `/api/generation-jobs/${answerJobId}`, {}],
     ['POST', `/api/cvs/${cvId}/questions/${questionId}/answers`, json({ answer: 'Hijacked' })],
     ['PATCH', `/api/cvs/${cvId}/questions/${questionId}`, json({ status: 'dismissed' })],
+    ['DELETE', `/api/cvs/${cvId}`, {}],
   ] as const;
 }
 

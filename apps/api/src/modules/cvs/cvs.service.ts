@@ -5,18 +5,27 @@ import {
   type CvContent,
   type UpdateCvRequest,
 } from '@cv-builder/shared';
+import { deleteStoredFiles } from '../../integrations/storage/delete-files';
+import type { FileStorage } from '../../integrations/storage/file-storage';
 import { AppError, NotFoundError } from '../../lib/errors';
+import type { Logger } from '../../lib/logger';
 import type { CvChanges, CvsRepository } from './cvs.repository';
 
-/** CVs are named after their target role until renaming exists. */
+/** A CV is named after its target role until it is renamed. */
 const UNTITLED_CV = 'Untitled CV';
 
 function titleFor(targetRole: string | null): string {
   return targetRole ?? UNTITLED_CV;
 }
 
+interface Dependencies {
+  cvs: CvsRepository;
+  storage: FileStorage;
+  logger: Logger;
+}
+
 /** CV business logic. HTTP-agnostic: it takes the acting user's id and validated input. */
-export function createCvsService(cvs: CvsRepository) {
+export function createCvsService({ cvs, storage, logger }: Dependencies) {
   return {
     list(userId: string) {
       return cvs.listForUser(userId);
@@ -40,12 +49,21 @@ export function createCvsService(cvs: CvsRepository) {
       });
     },
 
-    /** Saves the target role and/or the free-text source. Absent fields stay as they are. */
+    /**
+     * Renames the CV and/or saves the target role and the free-text source. Absent fields stay as
+     * they are. A new role renames the CV too, unless the person has given it a name of their own.
+     */
     async update(userId: string, cvId: string, input: UpdateCvRequest) {
       const changes: CvChanges = {};
       if (input.targetRole !== undefined) {
         changes.targetRole = input.targetRole;
-        changes.title = titleFor(input.targetRole);
+        const current = await cvs.findNames(userId, cvId);
+        if (current && current.title === titleFor(current.targetRole)) {
+          changes.title = titleFor(input.targetRole);
+        }
+      }
+      if (input.title !== undefined) {
+        changes.title = input.title;
       }
       if (input.sourceText !== undefined) {
         changes.sourceText = input.sourceText;
@@ -56,6 +74,18 @@ export function createCvsService(cvs: CvsRepository) {
         throw new NotFoundError('CV not found');
       }
       return cv;
+    },
+
+    /**
+     * Deletes the CV with everything that belongs to it, and then its uploaded files: the rows go
+     * in one transaction, and a file that can't be removed is only logged, never a failed request.
+     */
+    async remove(userId: string, cvId: string) {
+      const storageKeys = await cvs.removeForUser(userId, cvId);
+      if (!storageKeys) {
+        throw new NotFoundError('CV not found');
+      }
+      await deleteStoredFiles(storage, storageKeys, logger);
     },
 
     /**

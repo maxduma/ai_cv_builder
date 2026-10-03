@@ -165,6 +165,8 @@ describe.skipIf(!DATABASE_URL)('Prisma repositories on PostgreSQL', () => {
       expect(await repositories.cvs.listForUser(other)).toEqual([]);
       expect(await repositories.cvs.findForUser(other, cvId)).toBeNull();
       expect(await repositories.cvs.existsForUser(other, cvId)).toBe(false);
+      expect(await repositories.cvs.findNames(other, cvId)).toBeNull();
+      expect(await repositories.cvs.removeForUser(other, cvId)).toBeNull();
       expect(await repositories.cvs.update(other, cvId, { targetRole: 'Hijacked' })).toBeNull();
       expect(await repositories.cvs.saveContent(other, cvId, CONTENT, 1, () => [])).toEqual({
         kind: 'not_found',
@@ -227,6 +229,133 @@ describe.skipIf(!DATABASE_URL)('Prisma repositories on PostgreSQL', () => {
         targetRole: 'Backend Engineer',
         sourceText: 'Six years of Go.',
       });
+    });
+  });
+
+  describe('deleting a CV', () => {
+    const document = (userId: string, cvId: string) => ({
+      originalName: 'cv.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 10,
+      pageCount: 1,
+      storageKey: `${userId}/${cvId}/file.pdf`,
+      extractedText: 'Six years building payment APIs.',
+    });
+    const counts = async (cvId: string) => ({
+      cv: await prisma.cv.count({ where: { id: cvId } }),
+      documents: await prisma.sourceDocument.count({ where: { cvId } }),
+      jobs: await prisma.generationJob.count({ where: { cvId } }),
+      questions: await prisma.cvQuestion.count({ where: { cvId } }),
+    });
+
+    it('deletes the CV with its documents, jobs and questions, and returns the stored files', async () => {
+      const owner = await user('alex@example.com');
+      const { cvId, questionIds } = await generated(owner);
+      await repositories.sourceDocuments.replaceForCv(owner, cvId, document(owner, cvId));
+      // An answer being applied: a second job, tied to its question as well as to the CV.
+      const answered = await repositories.questions.answer(
+        owner,
+        cvId,
+        questionIds[0]!,
+        'AWS and GCP.',
+        answerInput,
+      );
+      expect(answered.kind).toBe('done');
+      expect(await counts(cvId)).toEqual({ cv: 1, documents: 1, jobs: 2, questions: 3 });
+
+      const keys = await repositories.cvs.removeForUser(owner, cvId);
+
+      expect(keys).toEqual([`${owner}/${cvId}/file.pdf`]);
+      expect(await counts(cvId)).toEqual({ cv: 0, documents: 0, jobs: 0, questions: 0 });
+    });
+
+    it('leaves every other CV alone, the same user’s and other users’', async () => {
+      const owner = await user('alex@example.com');
+      const other = await user('sam@example.com');
+      const doomed = await generated(owner);
+      const sibling = await generated(owner);
+      const foreign = await generated(other);
+
+      await repositories.cvs.removeForUser(owner, doomed.cvId);
+
+      expect(await counts(doomed.cvId)).toMatchObject({ cv: 0, jobs: 0, questions: 0 });
+      for (const kept of [sibling, foreign]) {
+        expect(await counts(kept.cvId)).toEqual({ cv: 1, documents: 0, jobs: 1, questions: 3 });
+      }
+      expect(await prisma.user.count()).toBe(2);
+    });
+
+    it('answers null once the CV is gone', async () => {
+      const owner = await user('alex@example.com');
+      const cvId = await draftCv(owner);
+
+      expect(await repositories.cvs.removeForUser(owner, cvId)).toEqual([]);
+      expect(await repositories.cvs.removeForUser(owner, cvId)).toBeNull();
+      expect(await repositories.cvs.findNames(owner, cvId)).toBeNull();
+    });
+
+    it('ignores every write from a run whose CV was deleted, without failing', async () => {
+      const owner = await user('alex@example.com');
+      const { cvId } = await queued(owner);
+      const lease = (await repositories.generation.claimNext())!;
+
+      await repositories.cvs.removeForUser(owner, cvId);
+
+      expect(await repositories.generation.heartbeat(lease, 1)).toBe(false);
+      expect(await repositories.generation.succeed(lease, CONTENT, ISSUES)).toBe(false);
+      expect(await repositories.generation.fail(lease, { code: 'X', message: 'x' })).toBe(false);
+      expect(await repositories.generation.release(lease)).toBe(false);
+      expect(await counts(cvId)).toEqual({ cv: 0, documents: 0, jobs: 0, questions: 0 });
+    });
+
+    it('drops the result of an answer whose CV was deleted', async () => {
+      const owner = await user('alex@example.com');
+      const { cvId, questionIds } = await generated(owner);
+      await repositories.questions.answer(owner, cvId, questionIds[0]!, 'AWS.', answerInput);
+      const lease = (await repositories.generation.claimNext())!;
+
+      await repositories.cvs.removeForUser(owner, cvId);
+
+      expect(await repositories.generation.completeAnswer(lease, () => ({ kind: 'invalid' }))).toBe(
+        'lost',
+      );
+    });
+
+    // A generation that finishes while its CV is deleted takes the same two rows (the CV and its
+    // job) from two sides. Both lock the CV first, so one waits for the other; locking the job
+    // first in `succeed` made PostgreSQL abort one of them as a deadlock.
+    it('never deadlocks with a generation that completes at the same moment', async () => {
+      const owner = await user('alex@example.com');
+
+      for (let round = 0; round < 25; round += 1) {
+        const { cvId } = await queued(owner);
+        const lease = (await repositories.generation.claimNext())!;
+
+        const [removed, succeeded] = await Promise.all([
+          repositories.cvs.removeForUser(owner, cvId),
+          repositories.generation.succeed(lease, CONTENT, ISSUES),
+        ]);
+
+        expect(removed, `round ${round}`).toEqual([]);
+        // Either order is fine: the result was saved and then deleted, or never saved.
+        expect(typeof succeeded).toBe('boolean');
+        expect(await counts(cvId)).toEqual({ cv: 0, documents: 0, jobs: 0, questions: 0 });
+      }
+    });
+
+    it('deletes over HTTP, and its stored PDF with it', async () => {
+      const app = await startAppWithTwoAccounts({ repositories });
+      const cv = await arrangeOwnedCv(app.baseUrl, app.owner, repositories);
+      expect(app.files.size).toBe(1);
+
+      const response = await fetch(`${app.baseUrl}/api/cvs/${cv.cvId}`, {
+        method: 'DELETE',
+        headers: { cookie: app.owner.cookie },
+      });
+
+      expect(response.status).toBe(204);
+      expect(await counts(cv.cvId)).toEqual({ cv: 0, documents: 0, jobs: 0, questions: 0 });
+      expect(app.files.size).toBe(0);
     });
   });
 

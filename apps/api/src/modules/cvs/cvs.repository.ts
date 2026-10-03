@@ -87,6 +87,17 @@ export function createCvsRepository(prisma: PrismaClient) {
       return count > 0;
     },
 
+    /** What a CV's name is derived from; `null` if the user has no such CV. */
+    findNames(
+      userId: string,
+      cvId: string,
+    ): Promise<{ title: string; targetRole: string | null } | null> {
+      return prisma.cv.findUnique({
+        where: { id_userId: { id: cvId, userId } },
+        select: { title: true, targetRole: true },
+      });
+    },
+
     create(userId: string, cv: NewCv): Promise<CvDetailRecord> {
       return prisma.cv.create({
         data: { ...cv, userId },
@@ -104,6 +115,28 @@ export function createCvsRepository(prisma: PrismaClient) {
         if (count === 0) return null;
       }
       return findForUser(userId, cvId);
+    },
+
+    /**
+     * Deletes the user's CV; its jobs, questions and documents go with it (the foreign keys
+     * cascade). Returns the storage keys of its uploaded files, which the caller deletes once this
+     * transaction has committed, or `null` if the user has no such CV.
+     */
+    removeForUser(userId: string, cvId: string): Promise<string[] | null> {
+      return prisma.$transaction(async (tx) => {
+        // The CV's row first, as every other writer locks it, and its jobs after it, as the delete
+        // cascades: a job worked on at the same moment can't end up waiting on the CV's row.
+        const locked = await tx.$queryRaw<{ id: string }[]>`
+          SELECT id FROM cvs WHERE id = ${cvId}::uuid AND user_id = ${userId}::uuid FOR UPDATE`;
+        if (locked.length === 0) return null;
+
+        const documents = await tx.sourceDocument.findMany({
+          where: { cvId, userId },
+          select: { storageKey: true },
+        });
+        await tx.cv.delete({ where: { id_userId: { id: cvId, userId } } });
+        return documents.map((document) => document.storageKey);
+      });
     },
 
     /**
