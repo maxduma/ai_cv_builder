@@ -1,7 +1,7 @@
 import type { CvDetail, CvListResponse, CvSummary } from '@cv-builder/shared';
 import { QueryClient } from '@tanstack/react-query';
 import { describe, expect, it } from 'vitest';
-import { cacheRenamedCv, cvKeys, forgetCv } from './api';
+import { cacheRenamedCv, cvKeys, forgetCv, listPollInterval } from './api';
 
 const summary = (id: string, title: string): CvSummary => ({
   id,
@@ -106,5 +106,21 @@ describe('forgetCv', () => {
     await forgetCv(queryClient, 'cv-1');
 
     expect(queryClient.getQueryData(cvKeys.list())).toBeUndefined();
+  });
+});
+
+describe('listPollInterval', () => {
+  const generating = { ...summary('cv-3', 'Writing'), status: 'generating' } as CvSummary;
+
+  it('polls while a CV is generating, and only then', () => {
+    expect(listPollInterval([summary('cv-1', 'Ready one'), generating], false)).toBe(3_000);
+    expect(listPollInterval(LIST.items, false)).toBe(false);
+    expect(listPollInterval([], false)).toBe(false);
+    expect(listPollInterval(undefined, false)).toBe(false);
+  });
+
+  it('holds still while a name is being typed, even if a CV is generating', () => {
+    // A fresh list can re-sort the cards, and a card that moves loses focus.
+    expect(listPollInterval([generating], true)).toBe(false);
   });
 });

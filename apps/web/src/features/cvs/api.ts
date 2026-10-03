@@ -4,6 +4,7 @@ import {
   type CvDetail,
   type CvListResponse,
   type CvQuestionDto,
+  type CvSummary,
   type GenerationJobDto,
   isTerminalJobStatus,
   isUpdating,
@@ -38,12 +39,24 @@ const LIST_POLL_MS = 3_000;
 /** The status screen follows a running job more closely. */
 const JOB_POLL_MS = 1_500;
 
-export function useCvs() {
+/**
+ * How often to fetch the list again: only while a CV is generating, and not while a name is being
+ * typed (`paused`): a fresh list can re-sort the cards, and a card that moves in the page loses
+ * focus, which would end the rename with half a name.
+ */
+export function listPollInterval(items: CvSummary[] | undefined, paused: boolean): number | false {
+  if (paused) return false;
+  return items?.some((cv) => cv.status === 'generating') ? LIST_POLL_MS : false;
+}
+
+export function useCvs({ paused = false }: { paused?: boolean } = {}) {
   return useQuery({
     queryKey: cvKeys.list(),
     queryFn: () => api.get<CvListResponse>('/cvs'),
-    refetchInterval: (query) =>
-      query.state.data?.items.some((cv) => cv.status === 'generating') ? LIST_POLL_MS : false,
+    refetchInterval: (query) => listPollInterval(query.state.data?.items, paused),
+    // Coming back to the tab, or to the network, would re-sort the list just the same.
+    refetchOnWindowFocus: !paused,
+    refetchOnReconnect: !paused,
   });
 }
 
