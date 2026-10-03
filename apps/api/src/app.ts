@@ -9,6 +9,7 @@ import { errorHandler } from './http/middleware/error-handler';
 import { notFound } from './http/middleware/not-found';
 import { createApiRouter } from './http/router';
 import type { PdfTextExtractor } from './integrations/extraction/pdf-text-extractor';
+import type { CvPdfRenderer } from './integrations/pdf/cv-pdf-renderer';
 import type { FileStorage } from './integrations/storage/file-storage';
 import type { Logger } from './lib/logger';
 import type { PasswordHasher } from './modules/auth/password-hasher';
@@ -28,6 +29,7 @@ export interface AppDeps {
   repositories: Repositories;
   fileStorage: FileStorage;
   pdfTextExtractor: PdfTextExtractor;
+  cvPdfRenderer: CvPdfRenderer;
 }
 
 /** A client-supplied request id is reused only if it is short and safe to log. */

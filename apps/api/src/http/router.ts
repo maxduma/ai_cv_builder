@@ -3,6 +3,8 @@ import type { AppDeps } from '../app';
 import { createAuthRouter, createCurrentUserRouter } from '../modules/auth/auth.routes';
 import { createAuthService } from '../modules/auth/auth.service';
 import { createSessionCookie } from '../modules/auth/session-cookie';
+import { createCvPdfRouter } from '../modules/cv-pdf/cv-pdf.routes';
+import { createCvPdfService } from '../modules/cv-pdf/cv-pdf.service';
 import { createCvsRouter } from '../modules/cvs/cvs.routes';
 import { createCvsService } from '../modules/cvs/cvs.service';
 import { createGenerationRouter } from '../modules/generation/generation.routes';
@@ -41,6 +43,10 @@ export function createApiRouter(deps: AppDeps): Router {
     extractor: deps.pdfTextExtractor,
     logger: deps.logger,
   });
+  const cvPdfService = createCvPdfService({
+    cvs: repositories.cvs,
+    renderer: deps.cvPdfRenderer,
+  });
   const generationService = createGenerationService(repositories.generation);
   const questionsService = createQuestionsService(repositories.questions);
 
@@ -56,6 +62,7 @@ export function createApiRouter(deps: AppDeps): Router {
   router.use('/auth', createCurrentUserRouter());
   router.use('/cvs', createCvsRouter(cvsService));
   router.use('/cvs', createSourceDocumentsRouter(sourceDocumentsService));
+  router.use('/cvs', createCvPdfRouter(cvPdfService));
   router.use(createGenerationRouter(generationService));
   router.use(createQuestionsRouter(questionsService));
 

@@ -5,6 +5,7 @@ import { createPrismaClient, pingDatabase } from './db/prisma';
 import { createRepositories } from './db/repositories';
 import { type ClaudeClient, createClaudeClient } from './integrations/ai/claude-client';
 import { createUnpdfTextExtractor } from './integrations/extraction/unpdf-pdf-text-extractor';
+import { createReactPdfCvRenderer } from './integrations/pdf/react-pdf-cv-renderer';
 import { createLocalFileStorage } from './integrations/storage/local-file-storage';
 import { createLogger, type Logger } from './lib/logger';
 import { createPasswordHasher } from './modules/auth/password-hasher';
@@ -78,6 +79,7 @@ async function main(): Promise<void> {
       maxPages: SOURCE_PDF_MAX_PAGES,
       timeoutMs: PDF_PARSE_TIMEOUT_MS,
     }),
+    cvPdfRenderer: createReactPdfCvRenderer(),
   });
 
   // AI jobs (generations and answers) run in this process; the jobs themselves live in PostgreSQL.

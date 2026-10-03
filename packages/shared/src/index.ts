@@ -3,6 +3,7 @@ export * from './cv';
 export * from './cv-content';
 export * from './cv-merge';
 export * from './cv-question';
+export * from './cv-view';
 export * from './errors';
 export * from './generation-job';
 export * from './health';

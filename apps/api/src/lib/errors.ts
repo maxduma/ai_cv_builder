@@ -1,6 +1,9 @@
 import type { ErrorCode } from '@cv-builder/shared';
 
-/** An error that maps directly to an HTTP error response (see http/middleware/error-handler.ts). */
+/**
+ * An error that maps directly to an HTTP error response (see http/middleware/error-handler.ts).
+ * A `cause` is logged with it (for a 5xx), never sent to the client.
+ */
 export class AppError extends Error {
   override name = 'AppError';
 
@@ -9,8 +12,9 @@ export class AppError extends Error {
     readonly code: ErrorCode,
     message: string,
     readonly details?: unknown,
+    options?: ErrorOptions,
   ) {
-    super(message);
+    super(message, options);
   }
 }
 

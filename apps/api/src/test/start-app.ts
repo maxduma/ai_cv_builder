@@ -1,13 +1,14 @@
 import { once } from 'node:events';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import type { AuthResponse, SignUpRequest } from '@cv-builder/shared';
+import type { AuthResponse, CvContent, SignUpRequest } from '@cv-builder/shared';
 import pino from 'pino';
 import { afterEach } from 'vitest';
 import { type AppDeps, createApp } from '../app';
 import { parseEnv } from '../config/env';
 import type { CurrentUserResolver } from '../http/middleware/current-user';
 import type { PdfText, PdfTextExtractor } from '../integrations/extraction/pdf-text-extractor';
+import type { CvPdfRenderer, RenderedPdf } from '../integrations/pdf/cv-pdf-renderer';
 import type { FileStorage } from '../integrations/storage/file-storage';
 import { createPasswordHasher } from '../modules/auth/password-hasher';
 import { SESSION_COOKIE } from '../modules/auth/session-cookie';
@@ -58,6 +59,27 @@ export function createFakeExtractor(result: PdfText | Error = SAMPLE_PDF_TEXT) {
   return { extractor, calls };
 }
 
+export const SAMPLE_RENDERED_PDF: RenderedPdf = {
+  data: new TextEncoder().encode('%PDF-1.7\n% a stand-in for a rendered CV\n%%EOF\n'),
+  pageCount: 2,
+};
+
+/**
+ * A renderer that returns `result`, or throws it if it is an error, and records the content it was
+ * given. The default for the app in tests, so they don't load React-PDF; its own tests use it.
+ */
+export function createFakePdfRenderer(result: RenderedPdf | Error = SAMPLE_RENDERED_PDF) {
+  const calls: CvContent[] = [];
+  const renderer: CvPdfRenderer = {
+    async render(content) {
+      calls.push(content);
+      if (result instanceof Error) throw result;
+      return result;
+    },
+  };
+  return { renderer, calls };
+}
+
 const testUserFromHeader: CurrentUserResolver = async (req) => {
   const id = req.header(TEST_USER_HEADER) ?? USER_A;
   return { id, email: `${id}@example.com`, name: 'Test User' };
@@ -85,6 +107,7 @@ export async function startApp({ sessions = 'header', ...overrides }: StartAppOp
   const { repositories, db } = createInMemoryRepositories();
   const { storage, files } = createMemoryStorage();
   const { extractor, calls: extractorCalls } = createFakeExtractor();
+  const { renderer: pdfRenderer, calls: pdfRenderCalls } = createFakePdfRenderer();
   const sessionTokens = createSessionTokens({ secret: TEST_JWT_SECRET });
 
   const app = createApp({
@@ -107,6 +130,7 @@ export async function startApp({ sessions = 'header', ...overrides }: StartAppOp
     repositories,
     fileStorage: storage,
     pdfTextExtractor: extractor,
+    cvPdfRenderer: pdfRenderer,
     ...overrides,
   });
 
@@ -121,6 +145,7 @@ export async function startApp({ sessions = 'header', ...overrides }: StartAppOp
     db,
     files,
     extractorCalls,
+    pdfRenderCalls,
   };
 }
 
