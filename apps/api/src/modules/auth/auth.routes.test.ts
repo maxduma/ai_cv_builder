@@ -223,7 +223,7 @@ describe('POST /api/auth/logout', () => {
     expect(cleared?.expires?.getTime()).toBeLessThan(Date.now());
   });
 
-  // Sessions are stateless (see the README): logging out removes the cookie from the browser, but a
+  // Sessions are stateless (see docs/architecture.md): logging out removes the cookie from the browser, but a
   // copy of the token stays valid until it expires. Pinned here so changing it is a decision.
   it('leaves a copied token valid until it expires', async () => {
     const { url, me, baseUrl } = await setup();

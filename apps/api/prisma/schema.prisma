@@ -1,4 +1,4 @@
-// Data model. See the "Data model" section of the README for an overview.
+// Data model. See the "Data model" section of docs/architecture.md for an overview.
 // Conventions: UUIDv7 ids, timestamptz columns, snake_case table/column names.
 
 generator client {

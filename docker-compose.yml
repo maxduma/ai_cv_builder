@@ -56,8 +56,10 @@ services:
       PORT: '4000'
       DATABASE_URL: postgresql://cvbuilder:cvbuilder@db:5432/cvbuilder
       UPLOAD_DIR: /data/uploads
-      # The only value read from .env. Without it the API runs on mocks (demo mode).
+      # The only value you have to set (in .env). Without it the API runs on mocks (demo mode).
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Optional: sign sessions with your own secret. By default a public development one is used.
+      JWT_SECRET: ${JWT_SECRET:-}
       PRISMA_HIDE_UPDATE_MESSAGE: '1'
     ports:
       - '127.0.0.1:${API_PORT:-4000}:4000'
