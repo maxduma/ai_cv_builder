@@ -33,6 +33,60 @@ describe('GET /api/health', () => {
   });
 });
 
+describe('response headers', () => {
+  it('sends the security headers and hides the framework', async () => {
+    const { baseUrl } = await startApp();
+
+    const response = await fetch(`${baseUrl}/api/health`);
+
+    expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(response.headers.get('content-security-policy')).toContain("default-src 'self'");
+    expect(response.headers.get('x-frame-options')).toBe('SAMEORIGIN');
+    expect(response.headers.has('x-powered-by')).toBe(false);
+  });
+
+  it('keeps API responses out of the browser cache', async () => {
+    const { baseUrl } = await startApp();
+
+    const response = await fetch(`${baseUrl}/api/cvs`);
+
+    expect(response.headers.get('cache-control')).toBe('no-store');
+  });
+});
+
+describe('request ids', () => {
+  const idFor = async (sent?: string) => {
+    const { baseUrl } = await startApp();
+    const response = await fetch(`${baseUrl}/api/does-not-exist`, {
+      headers: sent === undefined ? {} : { 'X-Request-Id': sent },
+    });
+    const body = (await response.json()) as ApiErrorBody;
+    expect(body.error.requestId).toBe(response.headers.get('x-request-id'));
+    return body.error.requestId;
+  };
+
+  it('reuses a short, safe id from the client', async () => {
+    expect(await idFor('trace-1234_abc')).toBe('trace-1234_abc');
+  });
+
+  it('generates its own when none is sent', async () => {
+    expect(await idFor()).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    );
+  });
+
+  it.each([
+    ['a long one', 'x'.repeat(200)],
+    ['one with spaces', 'not safe to log'],
+    ['one with markup', '<script>alert(1)</script>'],
+  ])('replaces %s with a generated id', async (_, sent) => {
+    const id = await idFor(sent);
+
+    expect(id).not.toBe(sent);
+    expect(id).toMatch(/^[0-9a-f-]{36}$/);
+  });
+});
+
 describe('error handling', () => {
   it('returns a JSON 404 for unknown routes', async () => {
     const { baseUrl } = await startApp();
