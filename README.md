@@ -7,7 +7,7 @@ A fullstack app that turns a PDF or a few notes plus a target role into a CV dra
 **Stack:** React 19, TypeScript, Vite · Node.js 22, Express 5 (REST), Zod · PostgreSQL 17, Prisma · Anthropic API (Claude Opus 5.5, structured output) · React-PDF · Docker Compose, pnpm, Vitest, GitHub Actions.
 
 **The five things the assignment asks for:** [run the project and the tests](#quick-start) · [architecture and decisions](#architecture-and-main-decisions) · [no invented facts](#how-the-ai-is-kept-from-inventing-facts) · [what I simplified and would do differently](#simplified-for-the-time-limit-and-what-i-would-do-differently) · [how I used AI tools](#how-i-used-ai-tools).
-More detail: [docs/architecture.md](docs/architecture.md) · [docs/api.md](docs/api.md) · [docs/development.md](docs/development.md) · [docs/limitations.md](docs/limitations.md).
+More detail: [docs/architecture.md](docs/architecture.md) · [docs/api.md](docs/api.md) · [docs/development.md](docs/development.md) · [docs/limitations.md](docs/limitations.md) · [docs/ai/](docs/ai/README.md).
 
 ## Quick start
 
@@ -106,5 +106,7 @@ I built the project with AI coding tools and directed and reviewed the result:
 - **Review.** Before submitting I ran a multi-agent review of the whole project (reviewers by area, skeptical verifiers that tried to refute each finding), and a second review that compared the code with the assignment sentence by sentence. Confirmed findings were fixed with tests.
 - **What review and testing caught in AI-written code,** each fixed with a test: a U+0000 in pasted text made PostgreSQL reject the write and the API answer `500`; `crypto.randomUUID` doesn't exist on `http://<computer-ip>:5173`, so adding a row did nothing from a phone; the prompt asked for roles "most recent first" although the assignment says most relevant first; the headline could be set to a title the person might not hold; and a delete racing a finishing generation could deadlock in PostgreSQL (the generation locked the job before the CV, every other writer that takes both the other way round).
 - **What stayed with me:** the requirements, the product and scope decisions, approving each plan, and reviewing the result.
+
+The approved plans, Claude's questions with my answers, the todo list, its memory notes and my hooks are in [docs/ai/](docs/ai/README.md).
 
 Claude is also part of the product: the API calls the Claude API to write CVs and apply answers. That is separate from the tools used to build it.
