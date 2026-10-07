@@ -1,2 +1,4 @@
 pnpm-lock.yaml
 **/migrations/
+# AI artifacts, kept exactly as they were written (see docs/ai/README.md)
+docs/ai/*/
